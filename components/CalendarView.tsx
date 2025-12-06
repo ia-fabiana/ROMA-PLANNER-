@@ -1,13 +1,17 @@
-import React, { useState, useMemo } from 'react';
-import { Calendar, Video, Image, Mic2, Trophy, Target, Rocket, RefreshCw, Flame, AlertTriangle, TrendingUp, X, CheckCircle2, ChevronRight, Plus, ChevronLeft, ChevronRight as ChevronRightIcon, Sparkles, MessageSquare, ArrowRight, Trash2, Edit3, ArrowDown, Copy, Maximize2, Tag, Database, Search, Filter } from 'lucide-react';
-import { StrategyItem, CalendarContext, ApprovedContent, ContentType } from '../types';
+
+import React, { useState, useMemo, useEffect } from 'react';
+import { Video, Image, Trophy, Target, Sparkles, X, CheckCircle2, ChevronLeft, ChevronRight as ChevronRightIcon, Maximize2, Tag, Search, Copy, Save, Edit, FileText, PieChart, BarChart2, AlertCircle, BookOpen, Star, Trash2 } from 'lucide-react';
+import { StrategyItem, CalendarContext, ApprovedContent, ContentType, PlannedContent } from '../types';
 import ReactMarkdown from 'react-markdown';
 
 interface CalendarViewProps {
   data: StrategyItem[];
   selectedIds: string[]; // Received from App
   onGenerate: (context: CalendarContext) => void;
+  onSavePlan: (plan: PlannedContent) => void;
+  onDeletePlan: (id: string) => void;
   approvedItems: Record<string, ApprovedContent>;
+  plannedItems: Record<string, PlannedContent>;
 }
 
 const WEEKLY_SCHEDULE = [
@@ -40,6 +44,64 @@ const LAUNCH_SCHEDULE = [
   { day: 'Domingo', focus: 'VIRAL', stories: 'Meme/áudio alta.', post: 'Fotos Lifestyle.', live: null }
 ];
 
+// --- KNOWLEDGE BASE: BOOK RECOMMENDATIONS ---
+const BOOK_RECOMMENDATIONS = [
+  { 
+    title: "Dicas de Ouro com IA", 
+    author: "Especialista em Prompts", 
+    tag: "IA / Prompts",
+    desc: "Um guia prático com prompts que resolvem problemas reais do dia a dia no salão."
+  },
+  { 
+    title: "Inteligência Artificial para Negócios", 
+    author: "Diversos Autores", 
+    tag: "Inovação",
+    desc: "Como a IA está transformando o mercado da beleza e atendimento."
+  },
+  { 
+    title: "Marketing na Era Digital", 
+    author: "Philip Kotler", 
+    tag: "Marketing",
+    desc: "Fundamentos essenciais para divulgar na era da tecnologia."
+  },
+  { 
+    title: "O Jeito Disney de Encantar Clientes", 
+    author: "Disney Institute", 
+    tag: "Atendimento",
+    desc: "Perfeito para falar sobre experiência do cliente e excelência."
+  },
+  { 
+    title: "Gatilhos Mentais", 
+    author: "Gustavo Ferreira", 
+    tag: "Vendas",
+    desc: "Ótimo para explicar como persuadir e vender mais."
+  },
+  { 
+    title: "Comece pelo Porquê", 
+    author: "Simon Sinek", 
+    tag: "Propósito",
+    desc: "Para posts sobre propósito de marca e inspiração."
+  },
+  { 
+    title: "Mindset: A Nova Psicologia do Sucesso", 
+    author: "Carol S. Dweck", 
+    tag: "Mentalidade",
+    desc: "Ideal para falar sobre crescimento e superação de desafios."
+  },
+  { 
+    title: "Roube Como Um Artista", 
+    author: "Austin Kleon", 
+    tag: "Criatividade",
+    desc: "Para falar sobre referências, criatividade e inovação."
+  },
+  { 
+    title: "A Experiência Apple", 
+    author: "Carmine Gallo", 
+    tag: "Fidelização",
+    desc: "Como criar fãs leais para o seu salão ou negócio."
+  }
+];
+
 // Helper to format date consistently as YYYY-MM-DD in local time
 const formatDateLocal = (date: Date) => {
   const year = date.getFullYear();
@@ -48,10 +110,11 @@ const formatDateLocal = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
-const CalendarView: React.FC<CalendarViewProps> = ({ data, selectedIds, onGenerate, approvedItems }) => {
+const CalendarView: React.FC<CalendarViewProps> = ({ data, selectedIds, onGenerate, onSavePlan, onDeletePlan, approvedItems, plannedItems }) => {
   const [viewMode, setViewMode] = useState<'standard' | 'warmup' | 'launch'>('standard');
   const [activeCell, setActiveCell] = useState<{dayIdx: number, type: 'stories' | 'post' | 'live', focus: string, date: string} | null>(null);
   const [viewingItem, setViewingItem] = useState<ApprovedContent | null>(null);
+  const [showStats, setShowStats] = useState(false);
   
   // Selection Logic within Modal
   const [modalSelectedIngredients, setModalSelectedIngredients] = useState<string[]>([]);
@@ -84,6 +147,33 @@ const CalendarView: React.FC<CalendarViewProps> = ({ data, selectedIds, onGenera
         return matchesCategory && matchesSearch;
     });
   }, [data, bankCategoryFilter, bankSearch]);
+
+  // Stats / Dashboard Data
+  const statsData = useMemo(() => {
+    const focusCounts: Record<string, number> = {};
+    const strategyCounts: Record<string, number> = {};
+    const typeCounts: Record<string, number> = {};
+
+    Object.values(approvedItems).forEach((item: ApprovedContent) => {
+        // Count Focus
+        const focus = item.strategy ? item.strategy.split('.')[0] : 'Geral'; // Approximate focus from strategy string or context
+        
+        // Let's count types
+        const typeKey = item.id.includes('live') ? 'Live' : item.id.includes('stories') ? 'Stories' : 'Post/Kit';
+        typeCounts[typeKey] = (typeCounts[typeKey] || 0) + 1;
+
+        // Try to parse ingredients from strategy text for repetition check
+        if (item.strategy && item.strategy.includes('Usar estes ingredientes específicos:')) {
+            const ings = item.strategy.split('Usar estes ingredientes específicos:')[1].trim().replace(/\.$/, '').split(', ');
+            ings.forEach(ing => {
+                strategyCounts[ing] = (strategyCounts[ing] || 0) + 1;
+            });
+        }
+    });
+
+    return { focusCounts, strategyCounts, typeCounts };
+  }, [approvedItems]);
+
 
   // Date State - Default to today
   const [selectedDate, setSelectedDate] = useState<string>(formatDateLocal(new Date()));
@@ -131,21 +221,43 @@ const CalendarView: React.FC<CalendarViewProps> = ({ data, selectedIds, onGenera
     : viewMode === 'launch' ? LAUNCH_SCHEDULE 
     : WEEKLY_SCHEDULE;
 
-  const handleCellClick = (dayIdx: number, type: 'stories' | 'post' | 'live', focus: string, dateStr: string) => {
-    if (type === 'live') return; // No generation for live yet
+  // Initialize modal data when activeCell changes
+  useEffect(() => {
+    if (activeCell) {
+        // Construct the ID to check for existing plans
+        const kitId = `${activeCell.date}-kit`;
+        const specificId = `${activeCell.date}-${activeCell.type === 'stories' ? 'stories' : (activeCell.type === 'live' ? 'live' : 'social')}`;
+        
+        // Check if there is a saved plan for this slot
+        const plan = plannedItems[kitId] || plannedItems[specificId];
+        
+        if (plan) {
+            setModalSelectedIngredients(plan.selectedIngredients || []);
+            setAdjustmentText(plan.adjustments || '');
+            if (plan.selectedIngredients && plan.selectedIngredients.length > 0) {
+                 setBankTab('all');
+            }
+        } else {
+            setModalSelectedIngredients([]);
+            setAdjustmentText('');
+            setBankTab('all');
+        }
+    }
+  }, [activeCell, plannedItems]);
 
-    // Determine the ID used in approvedItems (matches App.tsx logic)
-    const typeKey = type === 'stories' ? 'stories' : 'social';
-    const id = `${dateStr}-${typeKey}`;
-    const approved = approvedItems[id];
+  const handleCellClick = (dayIdx: number, type: 'stories' | 'post' | 'live', focus: string, dateStr: string) => {
+    // Check approval
+    const kitId = `${dateStr}-kit`;
+    // Map 'post' to 'social' for legacy/compatibility if needed, but 'live' needs its own
+    const typeSuffix = type === 'stories' ? 'stories' : (type === 'live' ? 'live' : 'social');
+    const specificId = `${dateStr}-${typeSuffix}`;
+    
+    const approved = approvedItems[kitId] || approvedItems[specificId];
 
     if (approved) {
       setViewingItem(approved);
     } else {
       setActiveCell({ dayIdx, type, focus, date: dateStr });
-      setModalSelectedIngredients([]); // Reset ingredients for this specific gen
-      setAdjustmentText('');
-      setBankTab('all'); // Default to showing all options
     }
   };
 
@@ -155,23 +267,61 @@ const CalendarView: React.FC<CalendarViewProps> = ({ data, selectedIds, onGenera
     );
   };
 
+  // 1. SAVE PLAN (NO GENERATION)
+  const handleSavePlanClick = (shouldClose: boolean = true) => {
+    if (!activeCell) return;
+    
+    const id = `${activeCell.date}-kit`; // Unified ID for planning
+    
+    const newPlan: PlannedContent = {
+        id,
+        date: activeCell.date,
+        type: activeCell.type,
+        focus: activeCell.focus,
+        selectedIngredients: modalSelectedIngredients,
+        adjustments: adjustmentText
+    };
+
+    onSavePlan(newPlan);
+    if (shouldClose) setActiveCell(null);
+  };
+  
+  // 1.5 DELETE PLAN
+  const handleRemovePlan = () => {
+      if (!activeCell) return;
+      const kitId = `${activeCell.date}-kit`;
+      const typeSuffix = activeCell.type === 'stories' ? 'stories' : (activeCell.type === 'live' ? 'live' : 'social');
+      const specificId = `${activeCell.date}-${typeSuffix}`;
+      
+      onDeletePlan(kitId);
+      onDeletePlan(specificId); // Delete both to be safe
+      
+      setActiveCell(null);
+  };
+
+  // 2. GENERATE (SAVES PLAN + TRIGGERS AI)
   const handleConfirmGeneration = () => {
     if (!activeCell) return;
     
-    // Build strategy string with specific selected ingredients
+    // First, save the plan
+    handleSavePlanClick(false); 
+
+    // Build strategy string
     let strategyText = "Estratégia Geral do Dia";
     if (modalSelectedIngredients.length > 0) {
         strategyText = `Usar estes ingredientes específicos: ${modalSelectedIngredients.join(', ')}.`;
     }
 
-    // Map cell type to content type
-    let cType: ContentType = 'kit'; 
-    if (activeCell.type === 'stories') cType = 'stories';
-    
+    // Include Live specific context if needed
+    if (activeCell.type === 'live') {
+        strategyText += " TIPO DE CONTEÚDO: Roteiro e Divulgação para LIVE.";
+    }
+
+    // Trigger Generation (this updates App state which triggers GeminiAdvisor)
     onGenerate({
         date: activeCell.date,
         dayOfWeek: currentSchedule[activeCell.dayIdx].day,
-        contentType: cType,
+        contentType: 'kit', // Force Kit for everything (including lives)
         focus: activeCell.focus,
         strategy: strategyText,
         adjustments: adjustmentText
@@ -180,16 +330,19 @@ const CalendarView: React.FC<CalendarViewProps> = ({ data, selectedIds, onGenera
     setActiveCell(null);
   };
 
-  // Helper to render cell content
-  const renderCellContent = (dayIdx: number, type: 'stories' | 'post' | 'live', label: string, dateStr: string) => {
-    if (type === 'live') {
-        if (!label) return <span className="text-slate-300">-</span>;
-        return <span className="text-xs text-purple-600 font-medium">{label}</span>;
-    }
+  // Determine if the current active slot is for Books
+  const isBookSlot = activeCell && activeCell.type === 'post' && 
+                     (currentSchedule[activeCell.dayIdx].post || '').includes('Livros');
 
-    const typeKey = type === 'stories' ? 'stories' : 'social';
-    const id = `${dateStr}-${typeKey}`;
-    const approved = approvedItems[id];
+  // Helper to render cell content
+  const renderCellContent = (dayIdx: number, type: 'stories' | 'post' | 'live', label: string | null, dateStr: string) => {
+    
+    const typeSuffix = type === 'stories' ? 'stories' : (type === 'live' ? 'live' : 'social');
+    const kitId = `${dateStr}-kit`;
+    const specificId = `${dateStr}-${typeSuffix}`;
+    
+    // 1. Check Approved
+    const approved = approvedItems[kitId] || approvedItems[specificId];
 
     if (approved) {
         return (
@@ -199,28 +352,75 @@ const CalendarView: React.FC<CalendarViewProps> = ({ data, selectedIds, onGenera
                 </div>
                 <p className="text-[10px] font-bold text-green-800 uppercase mb-1">Aprovado</p>
                 <p className="text-xs text-green-700 line-clamp-3 text-left">
-                  {approved.text.replace(/#/g, '').substring(0, 60)}...
+                  {approved.text.replace(/#/g, '').substring(0, 50)}...
                 </p>
                 <div className="absolute inset-0 bg-green-100/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-lg backdrop-blur-[1px]">
                    <span className="text-xs font-bold text-green-800 flex items-center bg-white px-2 py-1 rounded shadow-sm">
-                      <Maximize2 size={12} className="mr-1"/> Ver Conteúdo
+                      <Maximize2 size={12} className="mr-1"/> Ver
                    </span>
                 </div>
             </div>
         );
     }
 
+    // 2. Check Planned (Briefing)
+    const plan = plannedItems[kitId] || plannedItems[specificId];
+    
+    // Filter: Only show if relevant to this slot (or if it's a kit/global)
+    const isRelevant = plan && (plan.type === type || plan.type === 'kit' || (type === 'post' && (plan.type as any) === 'social'));
+    const relevantPlan = isRelevant ? plan : null;
+
+    if (relevantPlan) {
+         return (
+            <div className="h-full w-full bg-blue-50 border border-blue-200 rounded-lg p-2 relative group hover:shadow-md transition-all cursor-pointer overflow-hidden">
+                <div className="absolute top-1 right-1">
+                    <FileText className="text-blue-500 h-4 w-4" />
+                </div>
+                <p className="text-[10px] font-bold text-blue-700 uppercase mb-1">Planejado</p>
+                <div className="text-xs text-blue-600 text-left space-y-1">
+                   {relevantPlan.selectedIngredients && relevantPlan.selectedIngredients.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                         {relevantPlan.selectedIngredients.slice(0, 2).map((ing, i) => (
+                            <span key={i} className="bg-white px-1 rounded border border-blue-100 text-[9px] truncate max-w-full block">
+                               {ing.substring(0, 15)}...
+                            </span>
+                         ))}
+                         {relevantPlan.selectedIngredients.length > 2 && <span className="text-[9px] opacity-70">+{relevantPlan.selectedIngredients.length - 2}</span>}
+                      </div>
+                   ) : (
+                      <span className="italic opacity-70">Ingredientes manuais...</span>
+                   )}
+                   {relevantPlan.adjustments && (
+                       <p className="text-[9px] opacity-80 truncate border-t border-blue-100 pt-1 mt-1">"{relevantPlan.adjustments}"</p>
+                   )}
+                </div>
+                <div className="absolute inset-0 bg-blue-100/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-lg backdrop-blur-[1px] gap-2">
+                   <span className="text-xs font-bold text-blue-800 flex items-center bg-white px-2 py-1 rounded shadow-sm">
+                      <Edit size={12} className="mr-1"/> Editar
+                   </span>
+                </div>
+            </div>
+         );
+    }
+
+    // 3. Default Label
     return (
-      <div className="h-full flex flex-col justify-between text-slate-500 hover:text-slate-700 group cursor-pointer relative">
-        <span className="text-xs leading-tight text-left block">{label}</span>
+      <div className={`h-full flex flex-col justify-between text-slate-500 hover:text-slate-700 group cursor-pointer relative ${!label && type === 'live' ? 'opacity-50 hover:opacity-100' : ''}`}>
+        <span className="text-xs leading-tight text-left block">{label || (type === 'live' ? 'Agendar Live' : '-')}</span>
         <div className="mt-2 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity absolute bottom-0 right-0">
             <span className="bg-indigo-50 text-indigo-600 p-1 rounded hover:bg-indigo-100">
-                <Plus size={14} />
+                <Tag size={14} />
             </span>
         </div>
       </div>
     );
   };
+
+  // Determine if there is an EXISTING plan for the currently open modal
+  const existingPlanInModal = activeCell ? (
+      plannedItems[`${activeCell.date}-kit`] || 
+      plannedItems[`${activeCell.date}-${activeCell.type === 'stories' ? 'stories' : (activeCell.type === 'live' ? 'live' : 'social')}`]
+  ) : null;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -272,6 +472,15 @@ const CalendarView: React.FC<CalendarViewProps> = ({ data, selectedIds, onGenera
               Lançamento
             </button>
          </div>
+
+         {/* Report Button */}
+         <button 
+            onClick={() => setShowStats(true)}
+            className="flex items-center px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors text-xs font-bold"
+         >
+            <BarChart2 size={16} className="mr-2" />
+            Relatório de Tópicos
+         </button>
       </div>
 
       {/* Calendar Grid */}
@@ -327,12 +536,15 @@ const CalendarView: React.FC<CalendarViewProps> = ({ data, selectedIds, onGenera
                       {renderCellContent(idx, 'post', day.post, dateStr)}
                    </div>
 
-                   {/* Live Row (Non-clickable for generation in this version) */}
-                   <div className="p-3 bg-slate-50/50 min-h-[60px]">
+                   {/* Live Row */}
+                   <div 
+                     onClick={() => handleCellClick(idx, 'live', day.focus, dateStr)}
+                     className="p-3 hover:bg-slate-50 transition-colors flex-1 min-h-[80px]"
+                   >
                       <div className="flex items-center text-[10px] text-slate-400 font-bold uppercase mb-1">
                          <Video size={10} className="mr-1" /> Live
                       </div>
-                      {renderCellContent(idx, 'live', day.live || '', dateStr)}
+                      {renderCellContent(idx, 'live', day.live, dateStr)}
                    </div>
                 </div>
               </div>
@@ -345,11 +557,14 @@ const CalendarView: React.FC<CalendarViewProps> = ({ data, selectedIds, onGenera
       {activeCell && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 text-white shrink-0">
+            <div className={`p-6 text-white shrink-0 ${activeCell.type === 'live' ? 'bg-gradient-to-r from-red-600 to-pink-600' : 'bg-gradient-to-r from-indigo-600 to-purple-600'}`}>
                <div className="flex justify-between items-start">
                  <div>
-                    <h3 className="text-lg font-bold">Gerar Conteúdo com IA</h3>
-                    <p className="text-indigo-100 text-sm mt-1">
+                    <h3 className="text-lg font-bold flex items-center">
+                        {activeCell.type === 'live' && <Video className="mr-2" size={20}/>}
+                        Planejar {activeCell.type === 'live' ? 'Live' : 'Conteúdo'}
+                    </h3>
+                    <p className="text-white/80 text-sm mt-1">
                        {currentSchedule[activeCell.dayIdx].day}, {new Date(activeCell.date + 'T12:00:00').toLocaleDateString('pt-BR')}
                     </p>
                  </div>
@@ -360,14 +575,56 @@ const CalendarView: React.FC<CalendarViewProps> = ({ data, selectedIds, onGenera
             </div>
             
             <div className="p-6 space-y-6 overflow-y-auto flex-1">
-               <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
-                  <span className="text-xs font-bold text-indigo-500 uppercase tracking-wider block mb-1">Foco do Dia</span>
-                  <p className="font-semibold text-indigo-900">{activeCell.focus}</p>
-                  <p className="text-sm text-indigo-700 mt-2 italic">
-                     "{activeCell.type === 'stories' ? currentSchedule[activeCell.dayIdx].stories : currentSchedule[activeCell.dayIdx].post}"
+               <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Sugestão do Cronograma</span>
+                  <p className="font-semibold text-slate-900">{activeCell.focus}</p>
+                  <p className="text-sm text-slate-700 mt-2 italic">
+                     "{activeCell.type === 'stories' ? currentSchedule[activeCell.dayIdx].stories : (activeCell.type === 'live' ? (currentSchedule[activeCell.dayIdx].live || 'Tema Livre') : currentSchedule[activeCell.dayIdx].post)}"
                   </p>
                </div>
                
+               {/* --- SPECIAL BOOK RECOMMENDATION SECTION --- */}
+               {isBookSlot && (
+                  <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
+                     <div className="flex items-center gap-2 mb-3 text-amber-800">
+                        <BookOpen size={18} />
+                        <h4 className="font-bold text-sm">Base de Conhecimento: Indicações de Leitura</h4>
+                     </div>
+                     <p className="text-xs text-amber-700 mb-3">
+                        O cronograma sugere falar de um livro. Selecione uma das opções abaixo para a IA criar o conteúdo baseada nela:
+                     </p>
+                     <div className="grid grid-cols-2 gap-3">
+                        {BOOK_RECOMMENDATIONS.map((book, idx) => {
+                           const bookString = `Livro: ${book.title} (${book.author})`;
+                           const isSelected = modalSelectedIngredients.includes(bookString);
+                           return (
+                              <button
+                                 key={idx}
+                                 onClick={() => toggleModalIngredient(bookString)}
+                                 className={`p-3 rounded-lg border text-left transition-all ${
+                                    isSelected 
+                                       ? 'bg-amber-200 border-amber-400 shadow-sm' 
+                                       : 'bg-white border-amber-100 hover:border-amber-300 hover:shadow-sm'
+                                 }`}
+                              >
+                                 <div className="flex justify-between items-start">
+                                    <h5 className="font-bold text-slate-800 text-xs line-clamp-1">{book.title}</h5>
+                                    {isSelected && <CheckCircle2 size={12} className="text-amber-700 shrink-0"/>}
+                                 </div>
+                                 <p className="text-[10px] text-slate-500 mb-1">{book.author}</p>
+                                 <div className="inline-block bg-amber-100/50 px-1.5 py-0.5 rounded text-[9px] font-bold text-amber-800 uppercase mb-1">
+                                    {book.tag}
+                                 </div>
+                                 <p className="text-[10px] text-slate-600 italic line-clamp-2 leading-tight">
+                                    "{book.desc}"
+                                 </p>
+                              </button>
+                           );
+                        })}
+                     </div>
+                  </div>
+               )}
+
                {/* Ingredients Selection Section */}
                <div className="border-t border-slate-100 pt-4 flex flex-col h-[350px]">
                   <div className="flex items-center justify-between mb-4">
@@ -507,12 +764,28 @@ const CalendarView: React.FC<CalendarViewProps> = ({ data, selectedIds, onGenera
                   >
                      Cancelar
                   </button>
+                  {existingPlanInModal && (
+                      <button
+                        onClick={handleRemovePlan}
+                        className="px-4 py-2 border border-red-200 bg-red-50 text-red-600 font-bold rounded-lg hover:bg-red-100 flex items-center"
+                        title="Excluir Planejamento"
+                      >
+                         <Trash2 size={16} />
+                      </button>
+                  )}
+                  <button 
+                    onClick={() => handleSavePlanClick(true)}
+                    className="px-4 py-2 border border-blue-200 bg-blue-50 text-blue-700 font-bold rounded-lg hover:bg-blue-100 flex items-center"
+                  >
+                     <Save size={16} className="mr-2" />
+                     {existingPlanInModal ? 'Atualizar Planejamento' : 'Salvar Planejamento'}
+                  </button>
                   <button 
                     onClick={handleConfirmGeneration}
                     className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-md flex items-center"
                   >
                      <Sparkles size={16} className="mr-2" />
-                     Criar no Advisor
+                     Gerar Conteúdo
                   </button>
                </div>
             </div>
@@ -520,67 +793,5 @@ const CalendarView: React.FC<CalendarViewProps> = ({ data, selectedIds, onGenera
         </div>
       )}
 
-      {/* Read Mode Modal */}
-      {viewingItem && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
-             
-             {/* Header */}
-             <div className="bg-white border-b border-slate-200 p-4 flex justify-between items-center shrink-0">
-                <div className="flex items-center gap-3">
-                   <div className="p-2 bg-green-100 text-green-700 rounded-lg">
-                      <CheckCircle2 size={20} />
-                   </div>
-                   <div>
-                      <h3 className="font-bold text-slate-900">Conteúdo Aprovado</h3>
-                      <p className="text-xs text-slate-500">
-                         {new Date(viewingItem.date + 'T12:00:00').toLocaleDateString('pt-BR')} • {viewingItem.type.toUpperCase()}
-                      </p>
-                   </div>
-                </div>
-                <button onClick={() => setViewingItem(null)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
-                   <X size={20} />
-                </button>
-             </div>
-
-             {/* Content */}
-             <div className="p-6 overflow-y-auto">
-                <div className="prose prose-sm max-w-none text-black prose-headings:text-black prose-p:text-black prose-li:text-black prose-strong:text-black">
-                   <ReactMarkdown>{viewingItem.text}</ReactMarkdown>
-                </div>
-
-                {viewingItem.imageUrl && (
-                   <div className="mt-6 border rounded-xl overflow-hidden shadow-sm">
-                      <img src={viewingItem.imageUrl} alt="Conteúdo Visual" className="w-full h-auto" />
-                      <div className="p-2 bg-slate-50 text-xs text-center text-slate-500">
-                         Imagem Gerada
-                      </div>
-                   </div>
-                )}
-             </div>
-
-             {/* Footer */}
-             <div className="p-4 border-t border-slate-200 bg-slate-50 shrink-0 flex justify-end gap-3">
-                <button 
-                  onClick={() => {
-                     navigator.clipboard.writeText(viewingItem.text);
-                  }}
-                  className="flex items-center px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 text-sm font-medium hover:bg-slate-50"
-                >
-                   <Copy size={16} className="mr-2"/> Copiar Texto
-                </button>
-                <button 
-                   onClick={() => setViewingItem(null)}
-                   className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700"
-                >
-                   Fechar
-                </button>
-             </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default CalendarView;
+      {/* Stats/Dashboard Modal */}
+      {showStats

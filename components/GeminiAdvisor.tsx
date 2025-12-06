@@ -64,7 +64,15 @@ const KIT_SCHEMA = {
       properties: { 
         title: {type: Type.STRING}, 
         content: {type: Type.STRING},
-        // Caption usually doesn't have its own image separate from Feed, but we keep schema clean
+        // Caption usually doesn't have its own image separate from Feed
+      } 
+    },
+    hashtags: { 
+      type: Type.OBJECT, 
+      properties: { 
+        title: {type: Type.STRING}, 
+        content: {type: Type.STRING},
+        // No visuals for hashtags
       } 
     },
     carousel: { 
@@ -80,7 +88,7 @@ const KIT_SCHEMA = {
       } 
     },
   },
-  required: ["script", "stories", "feed", "caption", "carousel"]
+  required: ["script", "stories", "feed", "caption", "hashtags", "carousel"]
 };
 
 const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({ data, selectedIds, calendarContext, onClearContext, onApprove }) => {
@@ -109,7 +117,6 @@ const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({ data, selectedIds, calend
 
   // Image Reference State
   const [referenceImage, setReferenceImage] = useState<string | null>(null);
-  const [showOverlay, setShowOverlay] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // History State
@@ -125,16 +132,12 @@ const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({ data, selectedIds, calend
   // Handle incoming calendar context on mount/change
   useEffect(() => {
     if (calendarContext) {
-      if (calendarContext.contentType === 'stories') {
-        setPromptType('stories');
-      } else if (calendarContext.contentType === 'roteiro') {
-        setPromptType('roteiro');
-      } else {
-        setPromptType('kit'); 
-      }
+      // Force KIT type for calendar context to ensure "Same Page" generation
+      setPromptType('kit');
       setIsApproved(false);
       setAdjustmentText('');
       setKitResult(null);
+      // Trigger generation automatically when context arrives
       generateInsight(true); 
     }
   }, [calendarContext]);
@@ -166,10 +169,10 @@ const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({ data, selectedIds, calend
     const summary: string[] = [];
     if (calendarContext) {
         summary.push(`Agenda: ${calendarContext.date}`);
-        summary.push(`Foco: ${calendarContext.strategy.substring(0,20)}...`);
-    } else {
-        if (ingredients.pain.length) summary.push(`Dor: ${ingredients.pain[0].substring(0, 15)}...`);
-        if (ingredients.desire.length) summary.push(`Desejo: ${ingredients.desire[0].substring(0, 15)}...`);
+        summary.push(`Foco: ${calendarContext.focus.substring(0,20)}...`);
+    } else if (ingredients) {
+        if (ingredients.pain?.length) summary.push(`Dor: ${ingredients.pain[0].substring(0, 15)}...`);
+        if (ingredients.desire?.length) summary.push(`Desejo: ${ingredients.desire[0].substring(0, 15)}...`);
     }
 
     // Serialize object content for history
@@ -189,14 +192,14 @@ const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({ data, selectedIds, calend
 
   const deleteHistoryItem = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    setHistory(prev => prev.filter(item => item.id !== id));
+    setHistory(prev => prev.filter(item => item !== id));
   };
 
   const restoreHistoryItem = (item: HistoryItem) => {
     try {
         // Try parsing as JSON first (for Kit items)
         const parsed = JSON.parse(item.content);
-        if (typeof parsed === 'object' && parsed !== null && item.type === 'kit') {
+        if (typeof parsed === 'object' && parsed !== null && (item.type === 'kit' || parsed.script)) {
             setKitResult(parsed);
             setGeneratedContent('');
         } else {
@@ -210,7 +213,7 @@ const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({ data, selectedIds, calend
     }
 
     setStoryImage(item.imageUrl || null);
-    setSectionImages({}); // Clear section images on restore for now, as they aren't fully persisted in this simplified version
+    setSectionImages({}); // Clear section images on restore for now
     setPromptType(item.type);
     setIsApproved(false);
     setShowHistory(false);
@@ -238,7 +241,7 @@ const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({ data, selectedIds, calend
 
   const handleApprove = () => {
     if (calendarContext) {
-        const typeKey = calendarContext.contentType === 'stories' ? 'stories' : 'social';
+        const typeKey = 'kit'; // Store as kit type
         const id = `${calendarContext.date}-${typeKey}`;
         
         let finalContent = generatedContent;
@@ -250,7 +253,7 @@ const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({ data, selectedIds, calend
         const approvedItem: ApprovedContent = {
             id,
             date: calendarContext.date,
-            type: calendarContext.contentType,
+            type: 'kit', // Always approve as kit
             text: finalContent,
             imageUrl: storyImage || undefined,
             strategy: calendarContext.strategy,
@@ -310,12 +313,18 @@ const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({ data, selectedIds, calend
   
   // --- CORE GENERATION LOGIC ---
   const generateInsight = async (isAutoRun = false, customInstruction: string = '') => {
-    if (!process.env.API_KEY) return;
+    if (!process.env.API_KEY) {
+        alert("API KEY não configurada. Verifique as configurações do projeto.");
+        return;
+    }
+    
+    // Safety check: ensure we have something to generate from
     if (!hasIngredients && !calendarContext && !customInstruction) return;
 
     setLoading(true);
+    
+    // Only reset content if it's a fresh run, not a refinement
     if (!customInstruction) {
-        // Reset only if full regen
         setGeneratedContent('');
         setKitResult(null);
         setStoryImage(null);
@@ -354,16 +363,17 @@ const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({ data, selectedIds, calend
       // Prompt Configuration
       if (isKit) {
          fullPrompt += `
-         Gere uma CAMPANHA COMPLETA.
+         Gere uma CAMPANHA COMPLETA (KIT).
          Retorne um JSON estrito.
-         Estrutura:
+         Estrutura Obrigatória:
          - script: Roteiro de REELS ENVOLVENTE (Título, Conteúdo Markdown com Gancho Viral (3s), Corpo com Retenção e CTA Forte, visualCues: string[] com descrição para CADA cena). O foco é vídeo dinâmico vertical.
          - stories: Sequência de 5 Stories (Título, Conteúdo Markdown, visualCues: string[] com descrição para CADA story)
          - feed: Post de Feed (Título, Conteúdo Markdown com Headline, visualCues: string[] com 1 descrição da imagem)
-         - caption: Legenda AIDA + Hashtags (Título, Conteúdo Markdown)
+         - caption: Legenda AIDA para o post (Título, Conteúdo Markdown)
+         - hashtags: Hashtags Estratégicas (Título, Conteúdo Markdown com 30 hashtags divididas por grupos: Nicho, Local, Trend)
          - carousel: Estrutura Carrossel 5-7 slides (Título, Conteúdo Markdown, visualCues: string[] com descrição para CADA slide)
          
-         IMPORTANTE: 'visualCues' deve ser sempre um ARRAY de strings, mesmo se tiver apenas um item.
+         IMPORTANTE: 'visualCues' deve ser sempre um ARRAY de strings.
          `;
       } else {
          // Legacy text prompts
@@ -384,9 +394,14 @@ const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({ data, selectedIds, calend
       });
 
       if (isKit && response.text) {
-          const parsed = JSON.parse(response.text);
-          setKitResult(parsed);
-          if (!customInstruction) addToHistory(parsed, 'kit', isAutoRun ? {pain:[]} : ingredients);
+          try {
+            const parsed = JSON.parse(response.text);
+            setKitResult(parsed);
+            if (!customInstruction) addToHistory(parsed, 'kit', isAutoRun ? {pain:[]} : ingredients);
+          } catch (jsonError) {
+             console.error("JSON Parsing failed", jsonError);
+             setGeneratedContent("Erro ao processar o formato da resposta. O conteúdo bruto foi:\n\n" + response.text);
+          }
       } else {
           const text = response.text || 'Erro na geração.';
           setGeneratedContent(text);
@@ -394,8 +409,8 @@ const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({ data, selectedIds, calend
       }
 
     } catch (error) {
-      console.error(error);
-      setGeneratedContent('Erro ao gerar estratégia. Tente novamente.');
+      console.error("Generation Error:", error);
+      setGeneratedContent(`Erro ao gerar estratégia. Tente novamente.\nDetalhe: ${(error as any)?.message || 'Desconhecido'}`);
     } finally {
       setLoading(false);
     }
@@ -403,6 +418,11 @@ const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({ data, selectedIds, calend
 
   // Helper to generate a single image blob/url from a cue
   const generateSingleImage = async (cue: string): Promise<string> => {
+     if (!process.env.API_KEY) {
+        alert("API KEY não configurada.");
+        throw new Error("Missing API Key");
+     }
+     
      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
      
      let imagePrompt = `
@@ -491,12 +511,7 @@ const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({ data, selectedIds, calend
     if (!kitResult || !sectionAdjustmentText) return;
     
     setLoading(true);
-    // Regenerate just this section (simulated by re-running prompt with focus, 
-    // real implementation would be more complex partial update, here we just re-run full with instruction focused on that part
-    // OR we can just use the text prompt to update that specific part. For simplicity, let's re-run full but ask to keep others same.
-    // BETTER: Just run a text update on that specific content.
-    
-    // For this demo, let's just re-run the full kit generator with the instruction
+    // Use the text refine approach by running the full prompt focused on the update
     await generateInsight(false, `No item '${sectionKey}': ${sectionAdjustmentText}. Mantenha os outros itens iguais.`);
     setActiveRefineSection(null);
     setSectionAdjustmentText('');
@@ -555,6 +570,7 @@ const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({ data, selectedIds, calend
 
   // Render a specific card for a Kit Section
   const renderKitCard = (key: string, section: KitSection, icon: React.ReactNode, colorClass: string) => {
+    if (!section) return null;
     const isVisual = section.visualCues && section.visualCues.length > 0;
     
     return (
@@ -833,6 +849,8 @@ const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({ data, selectedIds, calend
                      {renderKitCard('feed', kitResult.feed, <ImageIcon size={20}/>, 'bg-purple-500')}
                      {renderKitCard('carousel', kitResult.carousel, <Grid size={20}/>, 'bg-indigo-500')}
                      {renderKitCard('legenda', kitResult.caption, <TypeIcon size={20}/>, 'bg-slate-500')}
+                     {/* RENDER HASHTAGS AT THE END */}
+                     {renderKitCard('hashtags', kitResult.hashtags, <Hash size={20}/>, 'bg-gray-600')}
                      
                      {/* Kit Approval */}
                      <div className="flex justify-center mt-12 mb-8">

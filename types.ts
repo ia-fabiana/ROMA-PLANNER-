@@ -21,9 +21,18 @@ export interface CalendarContext {
   date: string;
   dayOfWeek: string;
   contentType: ContentType;
-  strategy: string;
   focus: string;
+  strategy: string;
   adjustments?: string;
+}
+
+export interface PlannedContent {
+  id: string; // date-type
+  date: string;
+  type: 'stories' | 'post' | 'live';
+  focus: string;
+  selectedIngredients: string[]; // List of ingredient texts
+  adjustments: string; // Custom user instructions
 }
 
 export interface ApprovedContent {

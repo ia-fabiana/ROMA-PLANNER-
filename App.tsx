@@ -1,10 +1,11 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { AppMode, CalendarContext, ApprovedContent, ContentType } from './types';
+import { AppMode, CalendarContext, ApprovedContent, PlannedContent } from './types';
 import { STRATEGY_DATA } from './constants';
 import OrganizationView from './components/OrganizationView';
 import GeminiAdvisor from './components/GeminiAdvisor';
 import CalendarView from './components/CalendarView';
-import { LayoutDashboard, Bot, Layers, CalendarDays } from 'lucide-react';
+import { LayoutDashboard, Layers, CalendarDays } from 'lucide-react';
 
 export default function App() {
   const [mode, setMode] = useState<AppMode>(AppMode.ORGANIZATION);
@@ -23,9 +24,22 @@ export default function App() {
     return {};
   });
 
+  // Store planned content (Briefings) keyed by "date-type"
+  const [plannedContent, setPlannedContent] = useState<Record<string, PlannedContent>>(() => {
+    if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('roma_planned_content');
+        return saved ? JSON.parse(saved) : {};
+    }
+    return {};
+  });
+
   useEffect(() => {
     localStorage.setItem('roma_approved_content', JSON.stringify(approvedContent));
   }, [approvedContent]);
+
+  useEffect(() => {
+    localStorage.setItem('roma_planned_content', JSON.stringify(plannedContent));
+  }, [plannedContent]);
 
   const toggleSelection = (id: string) => {
     setSelectedIds(prev => 
@@ -48,6 +62,21 @@ export default function App() {
         ...prev,
         [item.id]: item
     }));
+  };
+
+  const handleSavePlan = (item: PlannedContent) => {
+    setPlannedContent(prev => ({
+        ...prev,
+        [item.id]: item
+    }));
+  };
+
+  const handleDeletePlan = (id: string) => {
+    setPlannedContent(prev => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+    });
   };
 
   const renderContent = () => {
@@ -77,7 +106,10 @@ export default function App() {
               data={STRATEGY_DATA}
               selectedIds={selectedIds}
               onGenerate={handleGenerateFromCalendar}
+              onSavePlan={handleSavePlan}
+              onDeletePlan={handleDeletePlan}
               approvedItems={approvedContent}
+              plannedItems={plannedContent}
             />
             
             <div ref={advisorRef} className="border-t border-slate-200 pt-8">
