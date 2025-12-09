@@ -1,9 +1,9 @@
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StrategyItem, ContentType, HistoryItem, CalendarContext, ApprovedContent } from '../types';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 import ReactMarkdown from 'react-markdown';
-import { Sparkles, Copy, RefreshCw, MessageSquare, Bot, AlertTriangle, Tag, X, Video, History, Trash2, Calendar, ArrowLeft, CheckCircle2, Image as ImageIcon, Download, Volume2, StopCircle, Upload, ThumbsUp, Eye, EyeOff, Smartphone, Square, RectangleVertical, Hash, Clapperboard, Type as TypeIcon, Layers, ChevronDown, ChevronUp, Wand2, Edit, Grid, RefreshCcw } from 'lucide-react';
+import { Sparkles, Copy, RefreshCw, X, Calendar, CheckCircle2, Image as ImageIcon, Video, Mic, ExternalLink, Wand2, Grid, Clapperboard, MonitorPlay, Layers, Edit2, Download, ChevronRight, Camera, Upload, Trash2 } from 'lucide-react';
 
 interface GeminiAdvisorProps {
   data: StrategyItem[];
@@ -13,934 +13,541 @@ interface GeminiAdvisorProps {
   onApprove: (item: ApprovedContent) => void;
 }
 
-interface KitSection {
-  title: string;
-  content: string;
-  visualCues: string[];
+// Helper to identify section types based on headers
+type SectionType = 'VIDEO' | 'STORIES' | 'FEED' | 'CAROUSEL' | 'AVATAR' | 'AUDIO' | 'IMAGE_PROMPT' | 'OTHER';
+
+interface ParsedSection {
+    id: string;
+    type: SectionType;
+    title: string;
+    content: string;
 }
 
-// Helper to define the schema structure manually since strictly typed Schema is verbose
-const KIT_SCHEMA = {
-  type: Type.OBJECT,
-  properties: {
-    script: { 
-      type: Type.OBJECT, 
-      properties: { 
-        title: {type: Type.STRING}, 
-        content: {type: Type.STRING}, 
-        visualCues: {
-          type: Type.ARRAY, 
-          items: {type: Type.STRING},
-          description: "List of detailed visual descriptions, one for each scene of the script."
-        } 
-      } 
-    },
-    stories: { 
-      type: Type.OBJECT, 
-      properties: { 
-        title: {type: Type.STRING}, 
-        content: {type: Type.STRING}, 
-        visualCues: {
-          type: Type.ARRAY, 
-          items: {type: Type.STRING},
-          description: "List of detailed visual descriptions, one for each story frame (sequence)."
-        } 
-      } 
-    },
-    feed: { 
-      type: Type.OBJECT, 
-      properties: { 
-        title: {type: Type.STRING}, 
-        content: {type: Type.STRING}, 
-        visualCues: {
-          type: Type.ARRAY, 
-          items: {type: Type.STRING},
-          description: "List containing 1 visual description for the post image."
-        } 
-      } 
-    },
-    caption: { 
-      type: Type.OBJECT, 
-      properties: { 
-        title: {type: Type.STRING}, 
-        content: {type: Type.STRING},
-        // Caption usually doesn't have its own image separate from Feed
-      } 
-    },
-    hashtags: { 
-      type: Type.OBJECT, 
-      properties: { 
-        title: {type: Type.STRING}, 
-        content: {type: Type.STRING},
-        // No visuals for hashtags
-      } 
-    },
-    carousel: { 
-      type: Type.OBJECT, 
-      properties: { 
-        title: {type: Type.STRING}, 
-        content: {type: Type.STRING}, 
-        visualCues: {
-          type: Type.ARRAY, 
-          items: {type: Type.STRING},
-          description: "List of detailed visual descriptions, one for each slide of the carousel."
-        } 
-      } 
-    },
-  },
-  required: ["script", "stories", "feed", "caption", "hashtags", "carousel"]
-};
+const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({ 
+  data, 
+  selectedIds, 
+  calendarContext, 
+  onClearContext, 
+  onApprove 
+}) => {
+  const [prompt, setPrompt] = useState('');
+  const [response, setResponse] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [genType, setGenType] = useState<'TEXT' | 'IMAGE'>('TEXT');
 
-const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({ data, selectedIds, calendarContext, onClearContext, onApprove }) => {
-  const [generatedContent, setGeneratedContent] = useState<string>(''); // Legacy/Single string content
-  const [kitResult, setKitResult] = useState<Record<string, KitSection> | null>(null); // New structured content
-  
-  const [storyImage, setStoryImage] = useState<string | null>(null); // Legacy single image
-  const [sectionImages, setSectionImages] = useState<Record<string, string[]>>({}); // Images for kit sections (array of URLs)
+  // --- NEW STATE FOR INTERLEAVED IMAGES ---
+  // Key format: "sectionIndex_slotIndex"
+  const [generatedImages, setGeneratedImages] = useState<Record<string, string>>({});
+  const [isGeneratingImg, setIsGeneratingImg] = useState<Record<string, boolean>>({});
+  const [adjustedPrompts, setAdjustedPrompts] = useState<Record<string, string>>({});
+  const [referenceImages, setReferenceImages] = useState<Record<string, string>>({}); // Base64 refs
+  const [editingSlot, setEditingSlot] = useState<string | null>(null); // Which slot is open for adjustment
 
-  const [loading, setLoading] = useState(false);
-  const [generatingImage, setGeneratingImage] = useState<string | null>(null); // Holds key of section currently generating
-  const [regeneratingIndex, setRegeneratingIndex] = useState<{key: string, index: number} | null>(null); // Track individual image regen
-  const [promptType, setPromptType] = useState<ContentType>('kit'); // Default to Kit
-  const [isApproved, setIsApproved] = useState(false);
-  const [imageAspectRatio, setImageAspectRatio] = useState<'1:1' | '3:4' | '9:16'>('9:16');
-  
-  // Refinement State
-  const [adjustmentText, setAdjustmentText] = useState('');
-  
-  // Section-specific Refinement State
-  const [activeRefineSection, setActiveRefineSection] = useState<string | null>(null);
-  const [sectionAdjustmentText, setSectionAdjustmentText] = useState('');
-  
-  // Audio / TTS State
-  const [isSpeaking, setIsSpeaking] = useState(false);
-
-  // Image Reference State
-  const [referenceImage, setReferenceImage] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  // History State
-  const [showHistory, setShowHistory] = useState(false);
-  const [history, setHistory] = useState<HistoryItem[]>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('roma_history');
-      return saved ? JSON.parse(saved) : [];
-    }
-    return [];
-  });
-
-  // Handle incoming calendar context on mount/change
+  // Auto-set mode and prompt when coming from calendar
   useEffect(() => {
     if (calendarContext) {
-      // Force KIT type for calendar context to ensure "Same Page" generation
-      setPromptType('kit');
-      setIsApproved(false);
-      setAdjustmentText('');
-      setKitResult(null);
-      // Trigger generation automatically when context arrives
-      generateInsight(true); 
+      const ingredientsText = calendarContext.strategy;
+      
+      let basePrompt = `Atue como um estrategista de conteúdo sênior especialista em Marketing para Estética e Beleza (Método Roma).
+Eu preciso de um KIT DE CONTEÚDO COMPLETO E RICO para o dia, abrangendo vários formatos para garantir presença digital 360º.
+
+CONTEXTO DO CLIENTE:
+- Foco Estratégico do Dia: ${calendarContext.focus}
+- Ingredientes / Ideias Base: ${ingredientsText}
+${calendarContext.manualContent ? `- RASCUNHO / IDEIA DO USUÁRIO (Prioridade Total): "${calendarContext.manualContent}"` : ''}
+${calendarContext.adjustments ? `- Instruções Extras: ${calendarContext.adjustments}` : ''}
+
+IMPORTANTE: Se houver um rascunho do usuário, melhore-o, corrija-o e expanda-o para os formatos abaixo. Se não houver, crie do zero com base no Foco Estratégico.
+
+GERE O CONTEÚDO NO SEGUINTE FORMATO MARKDOWN (OBRIGATÓRIO USAR ESTES TÍTULOS EXATOS):
+
+# 🎥 1. ROTEIRO DE VÍDEO
+Crie uma tabela detalhada com duas colunas: ÁUDIO e VISUAL.
+
+# 📱 2. SEQUÊNCIA DE STORIES
+Roteiro para 5 a 7 stories conectados (Storytelling).
+
+# 📝 3. LEGENDA PARA FEED
+Focada em conversão e conexão (Técnica AIDA).
+
+# #️⃣ 4. HASHTAGS ESTRATÉGICAS
+Mix de hashtags.
+
+# 🎠 5. ESTRUTURA DE CARROSSEL
+Descreva EXATAMENTE 5 slides (1 Capa + 3 Conteúdo + 1 CTA). Use o formato: "Slide 1: Texto".
+
+# 🤖 6. SCRIPT PARA AVATAR
+Texto corrido e natural.
+
+# 🎙️ 7. BASE PARA NOTEBOOKLM
+Resumo denso para áudio.
+
+# 🖼️ 8. PROMPT PARA IMAGEM
+Descrição visual detalhada que servirá de base para as gerações de imagem.
+`;
+      setPrompt(basePrompt);
+      setGenType('TEXT');
     }
   }, [calendarContext]);
 
-  // Set default aspect ratio based on prompt type
-  useEffect(() => {
-    if (promptType === 'stories' || promptType === 'roteiro' || promptType === 'kit') {
-        setImageAspectRatio('9:16');
-    } else if (promptType === 'feed') {
-        setImageAspectRatio('4:3'); 
-    } else {
-        setImageAspectRatio('1:1');
-    }
-  }, [promptType]);
+  // --- PARSING LOGIC ---
+  const parseSections = (text: string): ParsedSection[] => {
+      if (!text) return [];
+      
+      // Split by Headers starting with #
+      const rawSections = text.split(/(?=\n# .)/);
+      
+      return rawSections.map((sectionRaw, index) => {
+          const lines = sectionRaw.trim().split('\n');
+          const titleLine = lines[0] || '';
+          const content = lines.slice(1).join('\n').trim();
+          
+          let type: SectionType = 'OTHER';
+          const t = titleLine.toUpperCase();
+          
+          if (t.includes('ROTEIRO DE VÍDEO') || t.includes('VIDEO')) type = 'VIDEO';
+          else if (t.includes('SEQUÊNCIA DE STORIES') || t.includes('STORIES')) type = 'STORIES';
+          else if (t.includes('LEGENDA') || t.includes('FEED')) type = 'FEED';
+          else if (t.includes('CARROSSEL')) type = 'CAROUSEL';
+          else if (t.includes('AVATAR')) type = 'AVATAR';
+          else if (t.includes('NOTEBOOKLM')) type = 'AUDIO';
+          else if (t.includes('PROMPT PARA IMAGEM')) type = 'IMAGE_PROMPT';
 
-  // Persist history
-  useEffect(() => {
-    localStorage.setItem('roma_history', JSON.stringify(history));
-  }, [history]);
-
-  // TTS Cleanup
-  useEffect(() => {
-    return () => {
-        window.speechSynthesis.cancel();
-    };
-  }, []);
-
-  const addToHistory = (content: string | object, type: ContentType, ingredients: any, imageUrl?: string) => {
-    const summary: string[] = [];
-    if (calendarContext) {
-        summary.push(`Agenda: ${calendarContext.date}`);
-        summary.push(`Foco: ${calendarContext.focus.substring(0,20)}...`);
-    } else if (ingredients) {
-        if (ingredients.pain?.length) summary.push(`Dor: ${ingredients.pain[0].substring(0, 15)}...`);
-        if (ingredients.desire?.length) summary.push(`Desejo: ${ingredients.desire[0].substring(0, 15)}...`);
-    }
-
-    // Serialize object content for history
-    const finalContent = typeof content === 'string' ? content : JSON.stringify(content);
-
-    const newItem: HistoryItem = {
-      id: Date.now().toString(),
-      timestamp: Date.now(),
-      type,
-      content: finalContent,
-      ingredientsSummary: summary,
-      imageUrl
-    };
-
-    setHistory(prev => [newItem, ...prev]);
+          return {
+              id: `sec_${index}`,
+              type,
+              title: titleLine.replace(/^#+ /, ''),
+              content
+          };
+      }).filter(s => s.content.length > 0 || s.title.length > 0);
   };
 
-  const deleteHistoryItem = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    setHistory(prev => prev.filter(item => item !== id));
-  };
-
-  const restoreHistoryItem = (item: HistoryItem) => {
-    try {
-        // Try parsing as JSON first (for Kit items)
-        const parsed = JSON.parse(item.content);
-        if (typeof parsed === 'object' && parsed !== null && (item.type === 'kit' || parsed.script)) {
-            setKitResult(parsed);
-            setGeneratedContent('');
-        } else {
-            setGeneratedContent(item.content);
-            setKitResult(null);
-        }
-    } catch (e) {
-        // Fallback for plain text
-        setGeneratedContent(item.content);
-        setKitResult(null);
-    }
-
-    setStoryImage(item.imageUrl || null);
-    setSectionImages({}); // Clear section images on restore for now
-    setPromptType(item.type);
-    setIsApproved(false);
-    setShowHistory(false);
-    setAdjustmentText('');
-  };
-
-  const handleSpeak = (textToRead: string) => {
-    if (isSpeaking) {
-        window.speechSynthesis.cancel();
-        setIsSpeaking(false);
-        return;
-    }
-    if (!textToRead) return;
-
-    // Clean markdown
-    const clean = textToRead.replace(/(\*\*|__|\*|_|`|#|~|\[.*?\])/g, '');
+  const handleGenerateMain = async () => {
+    if (!prompt.trim()) return;
+    setIsLoading(true);
+    setError(null);
+    setResponse('');
+    setGeneratedImages({}); // Reset images on new text gen
     
-    const utterance = new SpeechSynthesisUtterance(clean);
-    utterance.lang = 'pt-BR';
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
-    setIsSpeaking(true);
-    window.speechSynthesis.speak(utterance);
-  };
-
-  const handleApprove = () => {
-    if (calendarContext) {
-        const typeKey = 'kit'; // Store as kit type
-        const id = `${calendarContext.date}-${typeKey}`;
-        
-        let finalContent = generatedContent;
-        // If kit, we flatten it for approval text, or just take the main parts
-        if (kitResult) {
-            finalContent = Object.values(kitResult).map((k: any) => `## ${k.title}\n\n${k.content}`).join('\n\n---\n\n');
-        }
-
-        const approvedItem: ApprovedContent = {
-            id,
-            date: calendarContext.date,
-            type: 'kit', // Always approve as kit
-            text: finalContent,
-            imageUrl: storyImage || undefined,
-            strategy: calendarContext.strategy,
-            timestamp: Date.now()
-        };
-        
-        onApprove(approvedItem);
-        setIsApproved(true);
-    }
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            setReferenceImage(reader.result as string);
-        };
-        reader.readAsDataURL(file);
-    }
-  };
-
-  const clearReferenceImage = () => {
-    setReferenceImage(null);
-    if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-    }
-  };
-
-  // Ingredients logic
-  const ingredients = useMemo(() => {
-    const acc = {
-      desire: [] as string[],
-      opportunity: [] as string[],
-      engagement: [] as string[],
-      objection: [] as string[],
-      pain: [] as string[]
-    };
-
-    selectedIds.forEach(idString => {
-      const [rowId, field] = idString.split('-');
-      const item = data.find(d => d.id === rowId);
-      if (item && field && field in item) {
-        // @ts-ignore
-        const value = item[field];
-        if (value && typeof value === 'string') {
-          // @ts-ignore
-          acc[field].push(value); 
-        }
-      }
-    });
-
-    return acc;
-  }, [selectedIds, data]);
-
-  const hasIngredients = selectedIds.length > 0;
-  
-  // --- CORE GENERATION LOGIC ---
-  const generateInsight = async (isAutoRun = false, customInstruction: string = '') => {
-    if (!process.env.API_KEY) {
-        alert("API KEY não configurada. Verifique as configurações do projeto.");
-        return;
-    }
-    
-    // Safety check: ensure we have something to generate from
-    if (!hasIngredients && !calendarContext && !customInstruction) return;
-
-    setLoading(true);
-    
-    // Only reset content if it's a fresh run, not a refinement
-    if (!customInstruction) {
-        setGeneratedContent('');
-        setKitResult(null);
-        setStoryImage(null);
-        setSectionImages({});
-        setIsApproved(false);
-    }
-    
-    setShowHistory(false);
-    window.speechSynthesis.cancel();
-    setIsSpeaking(false);
-
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      
-      const baseContext = `
-        Atue como um especialista em Marketing Digital para salões de beleza.
-        ROMA: "Ajudo Profissionais da Beleza a melhorar a divulgação e atrair novas clientes utilizando IA."
-        AVATAR: Iniciantes em tecnologia. Use linguagem simples (ELI5), acolhedora, sem termos infantis.
-        Use AIDA.
-      `;
 
-      let promptData = '';
-      if (calendarContext) {
-        promptData = `CONTEXTO: Estratégia: ${calendarContext.strategy}. Foco: ${calendarContext.focus}. Nota: ${calendarContext.adjustments || 'Nenhuma'}`;
-      } else {
-        promptData = `INGREDIENTES: Dores: ${ingredients.pain.join(', ')}. Desejos: ${ingredients.desire.join(', ')}.`;
-      }
-
-      const isKit = promptType === 'kit';
-      let fullPrompt = `${baseContext}\n${promptData}\n`;
-
-      if (customInstruction) {
-          fullPrompt += `\n🔴 REFAZER COM AJUSTE: "${customInstruction}".`;
-      }
-
-      // Prompt Configuration
-      if (isKit) {
-         fullPrompt += `
-         Gere uma CAMPANHA COMPLETA (KIT).
-         Retorne um JSON estrito.
-         Estrutura Obrigatória:
-         - script: Roteiro de REELS ENVOLVENTE (Título, Conteúdo Markdown com Gancho Viral (3s), Corpo com Retenção e CTA Forte, visualCues: string[] com descrição para CADA cena). O foco é vídeo dinâmico vertical.
-         - stories: Sequência de 5 Stories (Título, Conteúdo Markdown, visualCues: string[] com descrição para CADA story)
-         - feed: Post de Feed (Título, Conteúdo Markdown com Headline, visualCues: string[] com 1 descrição da imagem)
-         - caption: Legenda AIDA para o post (Título, Conteúdo Markdown)
-         - hashtags: Hashtags Estratégicas (Título, Conteúdo Markdown com 30 hashtags divididas por grupos: Nicho, Local, Trend)
-         - carousel: Estrutura Carrossel 5-7 slides (Título, Conteúdo Markdown, visualCues: string[] com descrição para CADA slide)
-         
-         IMPORTANTE: 'visualCues' deve ser sempre um ARRAY de strings.
-         `;
-      } else {
-         // Legacy text prompts
-         if (promptType === 'roteiro') fullPrompt += "Escreva um Roteiro de REELS altamente engajador (30-60s). Use linguagem falada e dinâmica. Estruture com: Gancho Viral (0-3s), Desenvolvimento (Retenção) e CTA (Chamada para Ação) Claro. Inclua sugestões de texto na tela e cortes.";
-         else if (promptType === 'stories') fullPrompt += "Crie uma sequência de 5 Stories (Interação > Conteúdo > Oferta).";
-         else if (promptType === 'feed') fullPrompt += "Crie uma descrição visual para foto de Feed e a Headline (Texto na imagem).";
-         else if (promptType === 'legenda') fullPrompt += "Crie uma Legenda AIDA para Instagram com Hashtags.";
-         else if (promptType === 'hashtags') fullPrompt += "Liste 30 hashtags estratégicas divididas por grupos.";
-      }
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: fullPrompt,
-        config: isKit ? { 
-            responseMimeType: 'application/json',
-            responseSchema: KIT_SCHEMA
-        } : undefined
-      });
-
-      if (isKit && response.text) {
-          try {
-            const parsed = JSON.parse(response.text);
-            setKitResult(parsed);
-            if (!customInstruction) addToHistory(parsed, 'kit', isAutoRun ? {pain:[]} : ingredients);
-          } catch (jsonError) {
-             console.error("JSON Parsing failed", jsonError);
-             setGeneratedContent("Erro ao processar o formato da resposta. O conteúdo bruto foi:\n\n" + response.text);
+      if (genType === 'IMAGE') {
+          // Manual Single Image Mode
+          const result = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: { parts: [{ text: prompt }] }
+          });
+          
+          if (result.candidates?.[0]?.content?.parts) {
+             for (const part of result.candidates[0].content.parts) {
+                 if (part.inlineData) {
+                     setGeneratedImages({ 'main_single': `data:${part.inlineData.mimeType};base64,${part.inlineData.data}` });
+                     setResponse('Imagem gerada abaixo.');
+                 }
+             }
           }
       } else {
-          const text = response.text || 'Erro na geração.';
-          setGeneratedContent(text);
-          if (!customInstruction) addToHistory(text, promptType, isAutoRun ? {pain:[]} : ingredients);
+          // Text Kit Mode
+          const result = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: { temperature: 0.7, topK: 40, topP: 0.95 }
+          });
+          if (result.text) setResponse(result.text);
       }
-
-    } catch (error) {
-      console.error("Generation Error:", error);
-      setGeneratedContent(`Erro ao gerar estratégia. Tente novamente.\nDetalhe: ${(error as any)?.message || 'Desconhecido'}`);
+    } catch (err) {
+      console.error(err);
+      setError("Erro ao gerar. Verifique sua chave API.");
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  // Helper to generate a single image blob/url from a cue
-  const generateSingleImage = async (cue: string): Promise<string> => {
-     if (!process.env.API_KEY) {
-        alert("API KEY não configurada.");
-        throw new Error("Missing API Key");
-     }
-     
-     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-     
-     let imagePrompt = `
-       Crie uma imagem realista, profissional, estilo fotografia de alta qualidade para Instagram de salão de beleza.
-       Cena: ${cue}
-       Estilo: Iluminação suave, tons de dourado e branco, clean, estético.
-       Texto OBRIGATÓRIO na imagem: @ia.fabiana
-       Texto deve ser pequeno, discreto, no canto inferior direito, fonte sans-serif moderna, cor branca ou dourada.
-     `;
+  // --- IMAGE SLOT GENERATION ---
+  const handleGenerateSlotImage = async (slotKey: string, context: string) => {
+      setIsGeneratingImg(prev => ({ ...prev, [slotKey]: true }));
+      setEditingSlot(null);
 
-     const contents: any[] = [{ text: imagePrompt }];
+      try {
+          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+          
+          // Use adjusted prompt if available, otherwise default context
+          const specificPrompt = adjustedPrompts[slotKey] || `
+            Crie uma imagem profissional, realista e estética para um salão de beleza.
+            Contexto: ${context.substring(0, 300)}.
+            Estilo: Fotografia de alta qualidade, iluminação suave, cores modernas, sem texto escrito na imagem.
+          `;
 
-     // If there's a reference image, include it
-     if (referenceImage) {
-        const base64Data = referenceImage.split(',')[1];
-        contents.unshift({
-           inlineData: {
-              data: base64Data,
-              mimeType: 'image/jpeg' 
-           }
-        });
-        imagePrompt += " Baseie-se na composição e estilo da imagem de referência fornecida, mas adapte para a cena descrita.";
-     }
+          const parts: any[] = [{ text: specificPrompt }];
+          
+          // Add reference image if exists
+          if (referenceImages[slotKey]) {
+              // Extract base64 data (remove header)
+              const base64Data = referenceImages[slotKey].split(',')[1];
+              parts.unshift({
+                  inlineData: {
+                      mimeType: 'image/jpeg',
+                      data: base64Data
+                  }
+              });
+          }
 
-     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: { parts: contents },
-        config: {
-           imageConfig: {
-              aspectRatio: imageAspectRatio,
-              imageSize: "1K"
-           }
-        }
-     });
+          const result = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: { parts },
+          });
 
-    // Extract image
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-       if (part.inlineData) {
-          return `data:image/png;base64,${part.inlineData.data}`;
-       }
-    }
-    throw new Error("No image generated");
+          let imgUrl = null;
+          if (result.candidates?.[0]?.content?.parts) {
+              for (const part of result.candidates[0].content.parts) {
+                  if (part.inlineData) {
+                      imgUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                      break;
+                  }
+              }
+          }
+
+          if (imgUrl) {
+              setGeneratedImages(prev => ({ ...prev, [slotKey]: imgUrl }));
+          } else {
+              alert("A IA não retornou uma imagem válida. Tente simplificar o prompt.");
+          }
+
+      } catch (e) {
+          console.error(e);
+          alert("Erro ao gerar imagem.");
+      } finally {
+          setIsGeneratingImg(prev => ({ ...prev, [slotKey]: false }));
+      }
   };
 
-  const handleGenerateSectionImages = async (sectionKey: string, cues: string[]) => {
-     if (!cues || cues.length === 0) return;
-     setGeneratingImage(sectionKey);
-     setRegeneratingIndex(null); // Clear specific regen state if running full batch
-
-     try {
-        const promises = cues.map(cue => generateSingleImage(cue));
-        const results = await Promise.all(promises);
-        
-        setSectionImages(prev => ({
-            ...prev,
-            [sectionKey]: results
-        }));
-     } catch (e) {
-        console.error("Batch image gen failed", e);
-        // Fallback or error toast could go here
-     } finally {
-        setGeneratingImage(null);
-     }
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, slotKey: string) => {
+      const file = e.target.files?.[0];
+      if (file) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+              setReferenceImages(prev => ({ ...prev, [slotKey]: reader.result as string }));
+          };
+          reader.readAsDataURL(file);
+      }
   };
 
-  const handleRegenerateSingleImage = async (sectionKey: string, index: number, cue: string) => {
-     setRegeneratingIndex({ key: sectionKey, index });
-     try {
-        const newUrl = await generateSingleImage(cue);
-        setSectionImages(prev => {
-           const currentImages = [...(prev[sectionKey] || [])];
-           currentImages[index] = newUrl;
-           return {
-              ...prev,
-              [sectionKey]: currentImages
-           };
-        });
-     } catch (e) {
-        console.error("Single image regen failed", e);
-     } finally {
-        setRegeneratingIndex(null);
-     }
+  const handleApproveContent = () => {
+      if (!response && Object.keys(generatedImages).length === 0) return;
+      
+      const id = calendarContext 
+        ? `${calendarContext.date}-${calendarContext.contentType}` 
+        : Date.now().toString();
+
+      // Collect all images
+      const allImages = Object.values(generatedImages);
+
+      const item: ApprovedContent = {
+          id: id,
+          date: calendarContext?.date || new Date().toISOString().split('T')[0],
+          type: calendarContext?.contentType || 'feed',
+          text: response,
+          imageUrl: allImages[0], // First image as main thumbnail
+          carouselImages: allImages, // All images stored here
+          strategy: calendarContext ? calendarContext.focus : 'Geral',
+          timestamp: Date.now()
+      };
+
+      onApprove(item);
+      onClearContext();
+      setResponse('');
+      setGeneratedImages({});
+      setReferenceImages({});
+      setPrompt('');
+      alert("Conteúdo e Imagens salvos com sucesso!");
   };
 
-  const handleRefineKitSection = async (sectionKey: string) => {
-    if (!kitResult || !sectionAdjustmentText) return;
-    
-    setLoading(true);
-    // Use the text refine approach by running the full prompt focused on the update
-    await generateInsight(false, `No item '${sectionKey}': ${sectionAdjustmentText}. Mantenha os outros itens iguais.`);
-    setActiveRefineSection(null);
-    setSectionAdjustmentText('');
-  };
+  // --- COMPONENT: IMAGE SLOT ---
+  const ImageSlot = ({ slotKey, label, context, ratioClass }: { slotKey: string, label: string, context: string, ratioClass: string }) => {
+      const img = generatedImages[slotKey];
+      const isBusy = isGeneratingImg[slotKey];
+      const refImg = referenceImages[slotKey];
+      const isEditing = editingSlot === slotKey;
+      const customPrompt = adjustedPrompts[slotKey];
 
-  const renderSectionImages = (sectionKey: string, cues: string[]) => {
-     const images = sectionImages[sectionKey];
-     const isGen = generatingImage === sectionKey;
-     
-     if (!images && !isGen) return null;
+      return (
+          <div className="flex flex-col space-y-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+              
+              {/* Header: Label + Controls */}
+              <div className="flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-extrabold uppercase text-slate-600 bg-slate-100 px-2 py-1 rounded">{label}</span>
+                    <button 
+                        onClick={() => handleGenerateSlotImage(slotKey, context)}
+                        disabled={isBusy}
+                        className="flex items-center space-x-1 px-3 py-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-md shadow-sm hover:shadow hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold transition-all"
+                    >
+                        {isBusy ? <RefreshCw size={12} className="animate-spin"/> : <Wand2 size={12} />}
+                        <span>Gerar</span>
+                    </button>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                      {/* Upload Reference Button - MORE VISIBLE */}
+                      <label className={`flex-1 flex items-center justify-center space-x-1.5 px-2 py-1.5 rounded-md cursor-pointer transition-colors text-[10px] font-bold border ${refImg ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-white text-slate-600 border-slate-200 hover:bg-blue-50 hover:text-blue-600'}`} title="Carregar uma foto para usar como referência visual (Image-to-Image)">
+                          <Camera size={12} />
+                          <span>{refImg ? 'Ref. OK' : '📸 Foto Ref.'}</span>
+                          <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, slotKey)} />
+                      </label>
 
-     return (
-        <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-2">
-           {cues.map((cue, idx) => {
-              const url = images?.[idx];
-              const isThisRegen = regeneratingIndex?.key === sectionKey && regeneratingIndex?.index === idx;
+                      {/* Edit Prompt Button */}
+                      <button 
+                          onClick={() => setEditingSlot(isEditing ? null : slotKey)}
+                          className={`flex-1 flex items-center justify-center space-x-1.5 px-2 py-1.5 rounded-md transition-colors text-[10px] font-bold border ${isEditing || customPrompt ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-white text-slate-600 border-slate-200 hover:bg-indigo-50 hover:text-indigo-600'}`}
+                          title="Editar o texto do prompt antes de gerar"
+                      >
+                          <Edit2 size={12} />
+                          <span>{customPrompt ? 'Editado' : 'Ajustar'}</span>
+                      </button>
+                  </div>
+              </div>
 
-              return (
-                <div key={idx} className="relative group rounded-lg overflow-hidden border border-slate-200 bg-slate-100 aspect-[9/16]">
-                   {url ? (
+              {/* Prompt Editor Area */}
+              {isEditing && (
+                  <div className="bg-slate-50 p-2 rounded-lg border border-slate-200 animate-fade-in relative z-10">
+                      <div className="flex justify-between items-center mb-1">
+                          <p className="text-[10px] text-indigo-600 font-bold uppercase">Prompt da Imagem</p>
+                          <button onClick={() => setEditingSlot(null)} className="text-slate-400 hover:text-slate-600"><X size={12}/></button>
+                      </div>
+                      <textarea 
+                          className="w-full text-xs p-2 rounded border border-slate-300 focus:outline-none focus:border-indigo-500 text-slate-700 bg-white"
+                          rows={3}
+                          value={adjustedPrompts[slotKey] !== undefined ? adjustedPrompts[slotKey] : context.substring(0, 300)}
+                          onChange={(e) => setAdjustedPrompts(prev => ({ ...prev, [slotKey]: e.target.value }))}
+                      />
+                  </div>
+              )}
+
+              {/* Reference Image Preview (Persistent) */}
+              {refImg && (
+                  <div className="flex items-center p-2 bg-blue-50 rounded-lg border border-blue-100 relative">
+                      <div className="h-8 w-8 rounded overflow-hidden border border-blue-200 mr-2 flex-shrink-0">
+                          <img src={refImg} className="h-full w-full object-cover" alt="Ref" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                          <p className="text-[9px] font-bold text-blue-700 truncate">Foto Referência Ativa</p>
+                      </div>
+                      <button 
+                          onClick={() => setReferenceImages(prev => { const n = {...prev}; delete n[slotKey]; return n; })} 
+                          className="p-1 bg-white text-red-500 rounded hover:bg-red-50 border border-transparent hover:border-red-100 transition-colors"
+                          title="Remover Referência"
+                      >
+                          <Trash2 size={10}/>
+                      </button>
+                  </div>
+              )}
+
+              {/* Main Image Display */}
+              <div className={`w-full ${ratioClass} bg-slate-100 rounded-lg flex items-center justify-center overflow-hidden border border-slate-200 relative group`}>
+                  {img ? (
                       <>
-                        <img src={url} alt={`Slide ${idx+1}`} className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
-                           <a href={url} download={`roma-${sectionKey}-${idx}.png`} className="p-2 bg-white rounded-full text-slate-800 hover:bg-slate-200 transition-colors" title="Baixar">
-                              <Download size={16} />
-                           </a>
-                           <button 
-                             onClick={() => handleRefineKitSection(sectionKey)} // This would trigger text refine, logic below is for image refine
-                             className="hidden"
-                           ></button>
-                           <button
-                             onClick={() => handleRegenerateSingleImage(sectionKey, idx, cue)}
-                             disabled={!!regeneratingIndex}
-                             className={`p-2 bg-white rounded-full text-slate-800 hover:bg-slate-200 transition-colors ${isThisRegen ? 'animate-spin' : ''}`}
-                             title="Regerar Imagem"
-                           >
-                              <RefreshCw size={16} />
-                           </button>
-                        </div>
-                        <div className="absolute bottom-0 left-0 right-0 p-1 bg-black/50 text-white text-[9px] truncate px-2">
-                           {cue}
+                        <img src={img} className="w-full h-full object-cover" alt="Generated" />
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                             <a href={img} download={`roma-img-${slotKey}.png`} className="p-2 bg-white text-slate-800 rounded-full shadow-lg hover:scale-110 transition-transform" title="Baixar Imagem">
+                                <Download size={16} />
+                            </a>
                         </div>
                       </>
-                   ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center p-2 text-center text-slate-400">
-                         {isGen || isThisRegen ? <Sparkles className="animate-spin mb-2" size={20}/> : <ImageIcon className="mb-2" size={20}/>}
-                         <span className="text-[10px] line-clamp-3">{cue}</span>
+                  ) : (
+                      <div className="text-center p-4 opacity-30 select-none">
+                          <ImageIcon size={24} className="text-slate-400 mx-auto mb-1"/>
+                          <p className="text-[10px] font-bold text-slate-400">Vazio</p>
                       </div>
-                   )}
-                </div>
-              );
-           })}
-        </div>
+                  )}
+              </div>
+          </div>
       );
   };
 
-  // Render a specific card for a Kit Section
-  const renderKitCard = (key: string, section: KitSection, icon: React.ReactNode, colorClass: string) => {
-    if (!section) return null;
-    const isVisual = section.visualCues && section.visualCues.length > 0;
-    
-    return (
-      <div key={key} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-6">
-        <div className={`px-4 py-3 border-b border-slate-100 flex justify-between items-center ${colorClass} bg-opacity-10`}>
-           <div className="flex items-center gap-2">
-              <div className={`p-1.5 rounded-lg ${colorClass} text-white`}>{icon}</div>
-              <h3 className="font-bold text-slate-800">{section.title || key.toUpperCase()}</h3>
-           </div>
-           <div className="flex items-center gap-2">
-              <button 
-                onClick={() => {
-                   navigator.clipboard.writeText(section.content);
-                }}
-                className="p-1.5 hover:bg-white rounded-md text-slate-500 transition-colors" title="Copiar Texto"
-              >
-                <Copy size={16} />
-              </button>
-           </div>
-        </div>
-        
-        <div className="p-5">
-           <div className="prose prose-sm max-w-none text-black prose-headings:text-black prose-p:text-black prose-li:text-black prose-strong:text-black">
-              <ReactMarkdown>{section.content}</ReactMarkdown>
-           </div>
-           
-           {/* Section Controls */}
-           <div className="mt-4 pt-4 border-t border-slate-100 flex flex-wrap items-center gap-3">
-              <button
-                onClick={() => setActiveRefineSection(activeRefineSection === key ? null : key)}
-                className="flex items-center px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
-              >
-                 <Edit size={14} className="mr-1.5" />
-                 Ajustar Texto
-              </button>
-              
-              {isVisual && (
-                 <button
-                    onClick={() => handleGenerateSectionImages(key, section.visualCues)}
-                    disabled={!!generatingImage}
-                    className="flex items-center px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors disabled:opacity-50"
-                 >
-                    {generatingImage === key ? <Sparkles size={14} className="mr-1.5 animate-spin"/> : <ImageIcon size={14} className="mr-1.5"/>}
-                    {sectionImages[key] ? 'Regerar Imagens' : 'Gerar Imagens Sugeridas'}
-                 </button>
-              )}
-           </div>
-
-           {/* Refinement Input */}
-           {activeRefineSection === key && (
-              <div className="mt-3 bg-slate-50 p-3 rounded-lg border border-slate-200 animate-fade-in">
-                 <textarea
-                    value={sectionAdjustmentText}
-                    onChange={(e) => setSectionAdjustmentText(e.target.value)}
-                    placeholder={`Como você quer melhorar este ${key}?`}
-                    className="w-full text-sm p-2 border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 mb-2"
-                    rows={2}
-                 />
-                 <div className="flex justify-end gap-2">
-                    <button 
-                       onClick={() => setActiveRefineSection(null)}
-                       className="px-3 py-1 text-xs text-slate-500 hover:text-slate-700"
-                    >Cancelar</button>
-                    <button 
-                       onClick={() => handleRefineKitSection(key)}
-                       disabled={loading}
-                       className="px-3 py-1 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
-                    >
-                       {loading ? 'Processando...' : 'Aplicar Ajuste'}
-                    </button>
-                 </div>
-              </div>
-           )}
-
-           {/* Images Display */}
-           {isVisual && renderSectionImages(key, section.visualCues)}
-        </div>
-      </div>
-    );
-  };
-
-  // Helper for rendering format tabs
-  const renderTab = (type: ContentType, label: string, icon: React.ReactNode) => {
-    const isActive = promptType === type;
-    return (
-      <button
-        onClick={() => setPromptType(type)}
-        className={`flex items-center px-4 py-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
-           isActive 
-             ? 'border-indigo-600 text-indigo-600 bg-indigo-50/50' 
-             : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-        }`}
-      >
-        {icon}
-        <span className="ml-2">{label}</span>
-      </button>
-    );
-  };
-
   return (
-    <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden animate-fade-in flex flex-col relative h-[calc(100vh-120px)] min-h-[600px]">
+    <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden flex flex-col min-h-[800px]">
       
-      {/* 1. TOP TAB BAR */}
-      <div className="flex items-center bg-white border-b border-slate-200 overflow-x-auto no-scrollbar">
-        {renderTab('kit', 'Campanha (Kit)', <Layers size={18} />)}
-        {renderTab('roteiro', 'Roteiro', <Clapperboard size={18} />)}
-        {renderTab('stories', 'Story', <Smartphone size={18} />)}
-        {renderTab('feed', 'Feed', <ImageIcon size={18} />)}
-        {renderTab('legenda', 'Legenda', <TypeIcon size={18} />)}
-        {renderTab('hashtags', 'Hashtags', <Hash size={18} />)}
-        
-        {/* Spacer */}
-        <div className="flex-1"></div>
-
-        {/* History Toggle */}
-        <button
-          onClick={() => setShowHistory(!showHistory)}
-          className={`p-3 text-slate-400 hover:text-indigo-600 transition-colors border-l border-slate-100 ${showHistory ? 'bg-indigo-50 text-indigo-600' : ''}`}
-          title="Histórico de Gerações"
-        >
-           <History size={18} />
-        </button>
-      </div>
-
-      {/* 2. COMPACT TOOLBAR */}
-      <div className="p-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center gap-3 shadow-sm z-10">
-        
-        {/* Main Generate Button */}
-        <button
-            onClick={() => generateInsight()}
-            disabled={loading || (!hasIngredients && !calendarContext && !adjustmentText)}
-            className={`
-                flex items-center px-4 py-2 rounded-lg font-bold text-sm shadow-sm transition-all
-                ${loading 
-                    ? 'bg-slate-200 text-slate-500 cursor-not-allowed' 
-                    : 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:shadow-md hover:scale-[1.02]'
-                }
-            `}
-        >
-            {loading ? <RefreshCw className="animate-spin mr-2 h-4 w-4" /> : <Sparkles className="mr-2 h-4 w-4" />}
-            {loading ? 'Criando...' : 'Gerar Conteúdo'}
-        </button>
-
-        {/* Visual Ref Upload */}
-        <div className="relative group">
-           <input
-               type="file"
-               ref={fileInputRef}
-               onChange={handleFileSelect}
-               className="hidden"
-               accept="image/*"
-           />
-           <button
-               onClick={() => fileInputRef.current?.click()}
-               className={`flex items-center px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${
-                  referenceImage 
-                    ? 'bg-green-50 text-green-700 border-green-200' 
-                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-               }`}
-           >
-               {referenceImage ? <CheckCircle2 size={14} className="mr-1.5"/> : <Upload size={14} className="mr-1.5"/>}
-               {referenceImage ? 'Ref. Carregada' : 'Ref. Visual'}
-           </button>
-           {referenceImage && (
-               <div className="absolute top-full left-0 mt-2 p-2 bg-white rounded shadow-lg border border-slate-200 z-50 w-32 hidden group-hover:block">
-                   <img src={referenceImage} alt="Ref" className="w-full h-20 object-cover rounded mb-2"/>
-                   <button onClick={clearReferenceImage} className="w-full text-xs text-red-500 hover:bg-red-50 p-1 rounded">Remover</button>
-               </div>
-           )}
+      {/* --- TOP: GENERATOR CONTROLS --- */}
+      <div className="w-full bg-slate-50 border-b border-slate-200 p-6 flex flex-col">
+        <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center space-x-2 text-indigo-700">
+                <Sparkles className="animate-pulse" />
+                <h2 className="font-bold text-lg">Roma AI Studio</h2>
+            </div>
+            {calendarContext && (
+                <button onClick={onClearContext} className="text-slate-400 hover:text-slate-600 flex items-center bg-white border border-slate-200 px-3 py-1 rounded-lg text-sm transition-colors hover:bg-slate-50">
+                    <X size={16} className="mr-1"/> Fechar
+                </button>
+            )}
         </div>
 
-        {/* Divider */}
-        <div className="h-6 w-px bg-slate-300 mx-1"></div>
-
-        {/* Context Indicator */}
-        <div className="flex-1 flex items-center justify-between overflow-hidden">
-            <div className="flex items-center text-xs text-slate-500 truncate mr-2">
-               {calendarContext ? (
-                  <>
-                     <span className="font-bold text-indigo-600 mr-2 bg-indigo-50 px-2 py-0.5 rounded">
-                        {calendarContext.dayOfWeek}
-                     </span>
-                     <span className="truncate max-w-[200px]">{calendarContext.focus}</span>
-                     <button onClick={onClearContext} className="ml-2 p-1 hover:bg-slate-200 rounded-full" title="Limpar Contexto">
-                        <X size={12}/>
-                     </button>
-                  </>
-               ) : hasIngredients ? (
-                  <>
-                     <span className="font-bold text-slate-700 mr-2 bg-white border px-2 py-0.5 rounded">
-                        {ingredients.pain.length} Dores
-                     </span>
-                     <span className="truncate max-w-[200px]">Selecionadas</span>
-                  </>
-               ) : (
-                  <span className="italic opacity-50">Selecione itens em "Organizar" ou use o Calendário</span>
-               )}
-            </div>
-            
-            {/* General Refine Input (Always visible but compact) */}
-            <div className="flex items-center max-w-[300px] flex-1">
-               <input 
-                  type="text" 
-                  value={adjustmentText}
-                  onChange={(e) => setAdjustmentText(e.target.value)}
-                  placeholder="Instrução extra (ex: 'Mais curto')"
-                  className="w-full text-xs py-1.5 px-3 border border-slate-300 rounded-l-lg focus:outline-none focus:border-indigo-500"
-               />
-               <button className="bg-slate-100 border border-l-0 border-slate-300 rounded-r-lg px-2 py-1.5 text-slate-500 hover:text-indigo-600">
-                  <Wand2 size={14} />
-               </button>
-            </div>
-        </div>
-      </div>
-
-      {/* 3. CONTENT AREA */}
-      <div className="flex-1 flex overflow-hidden bg-slate-50/30">
-        
-        {/* History Sidebar Overlay */}
-        {showHistory && (
-          <div className="w-64 bg-white border-r border-slate-200 flex flex-col z-20 absolute inset-y-0 left-0 shadow-xl animate-slide-in-left">
-            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h3 className="font-bold text-slate-700 flex items-center text-sm">
-                 <History size={16} className="mr-2"/> Histórico
-              </h3>
-              <button onClick={() => setShowHistory(false)}><X size={16} className="text-slate-400 hover:text-slate-600"/></button>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              {history.length === 0 && <div className="p-6 text-center text-xs text-slate-400">Nenhum histórico ainda.</div>}
-              {history.map(item => (
-                <div key={item.id} onClick={() => restoreHistoryItem(item)} className="p-3 border-b border-slate-100 hover:bg-indigo-50 cursor-pointer group">
-                   <div className="flex justify-between items-start mb-1">
-                      <span className="text-[10px] font-bold uppercase text-slate-400">
-                         {new Date(item.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
-                      </span>
-                      <button onClick={(e) => deleteHistoryItem(e, item.id)} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100">
-                         <Trash2 size={12}/>
-                      </button>
-                   </div>
-                   <div className="text-xs font-semibold text-slate-700 mb-1 flex items-center capitalize">
-                      {item.type === 'kit' ? <Layers size={12} className="mr-1 text-purple-500"/> : <MessageSquare size={12} className="mr-1 text-blue-500"/>}
-                      {item.type}
-                   </div>
-                   <div className="text-[10px] text-slate-500 line-clamp-2">
-                      {item.ingredientsSummary.join(' • ')}
-                   </div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-4 flex flex-col space-y-4">
+                <div className="bg-white p-1 rounded-lg border border-slate-200 flex shadow-sm">
+                    <button onClick={() => setGenType('TEXT')} className={`flex-1 py-3 text-xs font-bold uppercase rounded-md flex items-center justify-center space-x-2 transition-all ${genType === 'TEXT' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>
+                        <Layers size={14}/> <span>Kit Completo</span>
+                    </button>
+                    <button onClick={() => setGenType('IMAGE')} className={`flex-1 py-3 text-xs font-bold uppercase rounded-md flex items-center justify-center space-x-2 transition-all ${genType === 'IMAGE' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>
+                        <ImageIcon size={14}/> <span>Imagem Única</span>
+                    </button>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
 
-        {/* Main Result Display */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 scroll-smooth">
-          {loading ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-4">
-               <div className="relative">
-                  <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-500 rounded-full animate-spin"></div>
-                  <Sparkles className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-indigo-500" size={24} />
-               </div>
-               <p className="animate-pulse font-medium">Analisando estratégia e criando conteúdo...</p>
-            </div>
-          ) : !generatedContent && !kitResult ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60">
-               <Bot size={48} className="mb-4 text-slate-300"/>
-               <p className="text-sm">Selecione os ingredientes e clique em Gerar.</p>
-            </div>
-          ) : (
-            <div className="max-w-4xl mx-auto space-y-8 pb-20">
-              
-              {/* KIT VIEW MODE */}
-              {kitResult ? (
-                  <div className="space-y-6 animate-fade-in-up">
-                     {renderKitCard('roteiro', kitResult.script, <Clapperboard size={20}/>, 'bg-blue-500')}
-                     {renderKitCard('story', kitResult.stories, <Smartphone size={20}/>, 'bg-pink-500')}
-                     {renderKitCard('feed', kitResult.feed, <ImageIcon size={20}/>, 'bg-purple-500')}
-                     {renderKitCard('carousel', kitResult.carousel, <Grid size={20}/>, 'bg-indigo-500')}
-                     {renderKitCard('legenda', kitResult.caption, <TypeIcon size={20}/>, 'bg-slate-500')}
-                     {/* RENDER HASHTAGS AT THE END */}
-                     {renderKitCard('hashtags', kitResult.hashtags, <Hash size={20}/>, 'bg-gray-600')}
-                     
-                     {/* Kit Approval */}
-                     <div className="flex justify-center mt-12 mb-8">
-                        {isApproved ? (
-                           <div className="flex items-center space-x-2 text-green-600 bg-green-50 px-6 py-3 rounded-full border border-green-200">
-                              <CheckCircle2 size={24} />
-                              <span className="font-bold">Conteúdo Aprovado!</span>
-                           </div>
-                        ) : calendarContext && (
-                           <button
-                              onClick={handleApprove}
-                              className="flex items-center px-8 py-4 bg-green-600 text-white rounded-full font-bold shadow-lg hover:bg-green-700 hover:scale-105 transition-all"
-                           >
-                              <ThumbsUp size={20} className="mr-2" />
-                              Aprovar Campanha Completa
-                           </button>
+                {calendarContext && (
+                    <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-1 opacity-10"><Calendar size={64}/></div>
+                        <p className="text-[10px] uppercase font-bold text-indigo-500 mb-1">Planejamento Ativo</p>
+                        <p className="text-sm font-bold text-indigo-900 flex items-center">
+                        {calendarContext.dayOfWeek} • {calendarContext.contentType.toUpperCase()}
+                        </p>
+                        <div className="mt-2 text-xs text-indigo-700 bg-white/50 p-1.5 rounded">
+                        <span className="font-bold">Foco:</span> {calendarContext.focus}
+                        </div>
+                        {calendarContext.manualContent && (
+                            <div className="mt-2 text-[10px] text-indigo-600 italic border-t border-indigo-200 pt-1 flex items-center">
+                            <CheckCircle2 size={10} className="mr-1"/> Roteiro manual incluído
+                            </div>
                         )}
-                     </div>
-                  </div>
-              ) : (
-                  // STANDARD VIEW MODE (Legacy single text)
-                  <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm animate-fade-in-up">
-                      <div className="prose max-w-none mb-6 text-black prose-headings:text-black prose-p:text-black prose-li:text-black prose-strong:text-black">
-                          <ReactMarkdown>{generatedContent}</ReactMarkdown>
-                      </div>
-                      
-                      {/* Image Generator for Standard Mode */}
-                      {(promptType === 'feed' || promptType === 'stories') && (
-                          <div className="mt-8 pt-8 border-t border-slate-100">
-                              <div className="flex justify-between items-center mb-4">
-                                  <h4 className="font-bold text-slate-700 flex items-center">
-                                      <ImageIcon className="mr-2" size={18} /> 
-                                      Sugestão Visual
-                                  </h4>
-                                  {!storyImage && (
-                                      <button 
-                                          onClick={() => generateSingleImage(generatedContent.slice(0, 300)).then(setStoryImage)} // Simple generation based on text
-                                          className="text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-100 font-medium"
-                                      >
-                                          Gerar Imagem
-                                      </button>
-                                  )}
-                              </div>
-                              {storyImage && (
-                                  <div className="relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-50 max-w-sm mx-auto shadow-lg">
-                                      <img src={storyImage} alt="Generated" className="w-full h-auto" />
-                                      <div className="absolute top-2 right-2 flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                          <a href={storyImage} download="roma-content.png" className="p-2 bg-white/90 rounded-full shadow-sm hover:bg-white text-slate-700">
-                                              <Download size={16} />
-                                          </a>
-                                          <button onClick={() => setStoryImage(null)} className="p-2 bg-white/90 rounded-full shadow-sm hover:bg-white text-red-500">
-                                              <Trash2 size={16} />
-                                          </button>
-                                      </div>
-                                  </div>
-                              )}
-                          </div>
-                      )}
-
-                      {/* Approval Button Standard */}
-                      <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between">
-                          <div className="flex space-x-2">
-                             <button onClick={() => navigator.clipboard.writeText(generatedContent)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg" title="Copiar Texto">
-                                <Copy size={20} />
-                             </button>
-                             <button onClick={() => handleSpeak(generatedContent)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg" title={isSpeaking ? "Parar" : "Ouvir"}>
-                                {isSpeaking ? <StopCircle size={20} className="text-red-500 animate-pulse"/> : <Volume2 size={20} />}
-                             </button>
-                          </div>
-                          
-                          {calendarContext && (
-                             isApproved ? (
-                                <div className="text-green-600 font-bold flex items-center bg-green-50 px-4 py-2 rounded-lg">
-                                   <CheckCircle2 size={18} className="mr-2"/> Aprovado
-                                </div>
-                             ) : (
-                                <button
-                                   onClick={handleApprove}
-                                   className="bg-green-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-green-700 transition-colors shadow-sm flex items-center"
-                                >
-                                   <ThumbsUp size={18} className="mr-2" /> Aprovar
-                                </button>
-                             )
-                          )}
-                      </div>
-                  </div>
-              )}
+                    </div>
+                )}
+                
+                 <div className="grid grid-cols-2 gap-2">
+                     <a href="https://notebooklm.google.com/" target="_blank" className="flex items-center justify-center p-2 rounded-lg border border-slate-200 bg-white hover:border-indigo-300 transition-all text-xs font-bold text-slate-600"><Mic size={14} className="mr-1.5 text-blue-500"/> NotebookLM</a>
+                     <a href="https://app.heygen.com/" target="_blank" className="flex items-center justify-center p-2 rounded-lg border border-slate-200 bg-white hover:border-indigo-300 transition-all text-xs font-bold text-slate-600"><Video size={14} className="mr-1.5 text-purple-500"/> HeyGen Avatar</a>
+                 </div>
             </div>
-          )}
+
+            <div className="lg:col-span-8 flex flex-col h-full">
+                <textarea 
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    className="w-full h-full min-h-[140px] p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none resize-none text-sm bg-white shadow-sm font-mono"
+                    placeholder={genType === 'TEXT' ? "Instruções para o Kit..." : "Descrição da Imagem..."}
+                />
+                <button
+                    onClick={handleGenerateMain}
+                    disabled={isLoading || !prompt.trim()}
+                    className={`mt-4 w-full py-3 rounded-xl font-bold text-white shadow-lg transition-all flex items-center justify-center space-x-2 ${
+                        isLoading ? 'bg-slate-400 cursor-wait' : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:shadow-indigo-500/30'
+                    }`}
+                >
+                    {isLoading ? <><RefreshCw className="animate-spin mr-2" /><span>Gerando...</span></> : <><Wand2 className="mr-2" /><span>{genType === 'TEXT' ? 'Gerar Kit Completo' : 'Gerar Imagem'}</span></>}
+                </button>
+            </div>
         </div>
+      </div>
+
+      {/* --- BOTTOM: EDITOR & INTERLEAVED VISUALS --- */}
+      <div className="w-full bg-white p-8 flex-1 overflow-y-auto min-h-[500px] border-t border-slate-100">
+         {!response && Object.keys(generatedImages).length === 0 ? (
+             <div className="h-full flex flex-col items-center justify-center text-center opacity-40 mt-12">
+                 <Wand2 size={48} className="text-slate-400 mb-4" />
+                 <h3 className="text-xl font-bold text-slate-800">Seu espaço de criação</h3>
+                 <p className="text-slate-500">Gere roteiros, legendas e imagens tudo em um só lugar.</p>
+             </div>
+         ) : (
+             <div className="max-w-5xl mx-auto space-y-12 animate-fade-in-up">
+                 
+                 {/* SINGLE IMAGE MODE RESULT */}
+                 {genType === 'IMAGE' && generatedImages['main_single'] && (
+                     <div className="flex justify-center">
+                         <img src={generatedImages['main_single']} className="rounded-lg shadow-lg max-h-96" alt="Resultado" />
+                     </div>
+                 )}
+
+                 {/* TEXT KIT PARSED SECTIONS */}
+                 {genType === 'TEXT' && parseSections(response).map((section, idx) => (
+                     <div key={section.id} className="border-b border-slate-100 pb-12">
+                         {/* Text Content */}
+                         <div className="prose prose-indigo max-w-none text-slate-700">
+                             <ReactMarkdown components={{
+                                 h1: ({node, ...props}) => <h2 className="text-xl font-bold text-indigo-700 flex items-center mt-0 mb-4 border-l-4 border-indigo-600 pl-3" {...props} />,
+                                 table: ({node, ...props}) => <div className="overflow-x-auto border rounded-lg bg-slate-50 my-4 shadow-sm"><table className="w-full text-sm" {...props} /></div>,
+                                 th: ({node, ...props}) => <th className="px-4 py-2 bg-slate-100 font-bold text-left text-slate-700" {...props} />,
+                                 td: ({node, ...props}) => <td className="px-4 py-3 border-t border-slate-200" {...props} />,
+                             }}>
+                                 {`# ${section.title}\n${section.content}`}
+                             </ReactMarkdown>
+                         </div>
+
+                         {/* VISUAL GENERATOR BLOCK FOR THIS SECTION */}
+                         {['VIDEO', 'STORIES', 'FEED', 'CAROUSEL'].includes(section.type) && (
+                            <div className="mt-8 bg-slate-50 border border-slate-200 rounded-xl p-5 shadow-sm">
+                                <div className="flex items-center space-x-2 mb-4 border-b border-slate-200 pb-3">
+                                    <div className="p-1.5 bg-indigo-100 rounded text-indigo-600"><ImageIcon size={16}/></div>
+                                    <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Estúdio Visual: {section.title}</h3>
+                                </div>
+                                
+                                {/* VIDEO THUMBNAIL (9:16) */}
+                                {section.type === 'VIDEO' && (
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        <ImageSlot 
+                                            slotKey={`video_cover_${idx}`} 
+                                            label="Capa do Vídeo (9:16)" 
+                                            ratioClass="aspect-[9/16]" 
+                                            context={`Capa impactante para Reels sobre beleza: ${section.content.substring(0,150)}`}
+                                        />
+                                    </div>
+                                )}
+
+                                {/* STORIES SEQUENCE (5 SLOTS - 9:16) */}
+                                {section.type === 'STORIES' && (
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                        {[1,2,3,4,5].map(i => (
+                                            <ImageSlot 
+                                                key={i}
+                                                slotKey={`story_${idx}_${i}`} 
+                                                label={`Story ${i}`} 
+                                                ratioClass="aspect-[9/16]" 
+                                                context={`Story para Instagram slide ${i}, estética clean: ${section.content.substring(0,100)}`}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* FEED POST (1 SLOT - 1:1 or 4:5) */}
+                                {section.type === 'FEED' && (
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        <ImageSlot 
+                                            slotKey={`feed_post_${idx}`} 
+                                            label="Imagem Feed (1:1)" 
+                                            ratioClass="aspect-square" 
+                                            context={`Post Instagram profissional beleza: ${section.content.substring(0,150)}`}
+                                        />
+                                    </div>
+                                )}
+
+                                {/* CAROUSEL (5 SLOTS - 1:1) */}
+                                {section.type === 'CAROUSEL' && (
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                        {[1,2,3,4,5].map(i => (
+                                            <ImageSlot 
+                                                key={i}
+                                                slotKey={`carousel_${idx}_${i}`} 
+                                                label={`Slide ${i}`} 
+                                                ratioClass="aspect-square" 
+                                                context={`Slide carrossel informativo beleza ${i}: ${section.content.substring(0,100)}`}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                         )}
+                     </div>
+                 ))}
+
+                 <div className="flex justify-end pt-6 sticky bottom-0 bg-white/90 backdrop-blur p-4 border-t border-slate-100 shadow-lg">
+                     <button 
+                        onClick={handleApproveContent}
+                        className="px-8 py-3 rounded-lg font-bold text-white bg-green-600 hover:bg-green-700 shadow-lg flex items-center transform hover:-translate-y-1 transition-all"
+                     >
+                         <CheckCircle2 className="mr-2" />
+                         Aprovar Todo Conteúdo & Imagens
+                     </button>
+                 </div>
+             </div>
+         )}
       </div>
     </div>
   );

@@ -1,16 +1,16 @@
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StrategyItem } from '../types';
 import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer 
+  Radar, 
+  RadarChart, 
+  PolarGrid, 
+  PolarAngleAxis, 
+  PolarRadiusAxis, 
+  ResponsiveContainer,
+  Tooltip
 } from 'recharts';
-import { Database, TrendingUp, AlertCircle, Target, Tag, Sparkles, Star, Users, CheckSquare, MessageCircle, ShieldAlert } from 'lucide-react';
+import { Database, TrendingUp, AlertCircle, Target, Tag, Sparkles, Star, Users, CheckSquare, MessageCircle, ShieldAlert, PieChart } from 'lucide-react';
 
 interface OrganizationViewProps {
   data: StrategyItem[];
@@ -20,17 +20,48 @@ interface OrganizationViewProps {
 
 const OrganizationView: React.FC<OrganizationViewProps> = ({ data, selectedIds, onToggleSelection }) => {
   
-  // Aggregate data for charts
-  const painCount = data.reduce((acc, item) => {
-    const key = item.pain || 'Outros';
-    acc[key] = (acc[key] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
+  // Calcular métricas baseadas na SELEÇÃO REAL do usuário
+  const stats = useMemo(() => {
+    let counts = {
+      pain: 0,
+      objection: 0,
+      desire: 0,
+      opportunity: 0,
+      engagement: 0
+    };
 
-  const chartData = Object.keys(painCount)
-    .map(key => ({ name: key.substring(0, 15) + (key.length > 15 ? '...' : ''), full: key, count: painCount[key] }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 6); 
+    selectedIds.forEach(id => {
+      if (id.endsWith('-pain')) counts.pain++;
+      else if (id.endsWith('-objection')) counts.objection++;
+      else if (id.endsWith('-desire')) counts.desire++;
+      else if (id.endsWith('-opportunity')) counts.opportunity++;
+      else if (id.endsWith('-engagement')) counts.engagement++;
+    });
+
+    return counts;
+  }, [selectedIds]);
+
+  // Dados para o Gráfico Radar
+  const radarData = [
+    { subject: 'Dores', A: stats.pain, fullMark: 10 },
+    { subject: 'Objeções', A: stats.objection, fullMark: 10 },
+    { subject: 'Engajamento', A: stats.engagement, fullMark: 10 },
+    { subject: 'Oportunidades', A: stats.opportunity, fullMark: 10 },
+    { subject: 'Desejos', A: stats.desire, fullMark: 10 },
+  ];
+
+  // Diagnóstico Inteligente
+  const getDiagnosis = () => {
+    const total = selectedIds.length;
+    if (total === 0) return "Selecione itens na tabela para ver a análise.";
+    
+    const negativeBias = stats.pain + stats.objection;
+    const positiveBias = stats.desire + stats.opportunity;
+
+    if (negativeBias > positiveBias * 1.5) return "Sua estratégia está muito focada na DOR. Tente incluir mais Desejos e Oportunidades para inspirar, não apenas cutucar a ferida.";
+    if (positiveBias > negativeBias * 1.5) return "Sua estratégia é muito OTIMISTA. Lembre-se de tocar nas Dores e Objeções para gerar conexão e urgência.";
+    return "Excelente equilíbrio! Você está mesclando bem a atração (Desejos) com a conexão (Dores).";
+  };
 
   // Helper to render a checkable cell
   const renderCheckableCell = (item: StrategyItem, field: keyof StrategyItem, icon?: React.ReactNode, bgColorClass: string = 'bg-white') => {
@@ -75,7 +106,7 @@ const OrganizationView: React.FC<OrganizationViewProps> = ({ data, selectedIds, 
             "Ajudo Profissionais da Beleza a melhorar a divulgação e atrair novas clientes utilizando IA."
           </h1>
           <p className="mt-4 text-indigo-100 text-sm opacity-90 max-w-2xl">
-            Clique nos itens individuais da tabela abaixo para selecionar os "ingredientes" da sua estratégia.
+            Clique nos itens individuais da tabela abaixo (Dores, Desejos...) para montar seu mix estratégico.
           </p>
         </div>
       </div>
@@ -86,7 +117,7 @@ const OrganizationView: React.FC<OrganizationViewProps> = ({ data, selectedIds, 
             <Target size={24} />
           </div>
           <div>
-            <p className="text-sm text-slate-500">Total de Linhas</p>
+            <p className="text-sm text-slate-500">Base de Dados</p>
             <p className="text-2xl font-bold text-slate-800">{data.length}</p>
           </div>
         </div>
@@ -95,7 +126,7 @@ const OrganizationView: React.FC<OrganizationViewProps> = ({ data, selectedIds, 
             <CheckSquare size={24} />
           </div>
           <div>
-            <p className="text-sm text-slate-500">Itens Selecionados</p>
+            <p className="text-sm text-slate-500">Ingredientes</p>
             <p className="text-2xl font-bold text-slate-800">{selectedIds.length}</p>
           </div>
         </div>
@@ -104,17 +135,17 @@ const OrganizationView: React.FC<OrganizationViewProps> = ({ data, selectedIds, 
             <AlertCircle size={24} />
           </div>
           <div>
-            <p className="text-sm text-slate-500">Dores Distintas</p>
-            <p className="text-2xl font-bold text-slate-800">{Object.keys(painCount).length}</p>
+            <p className="text-sm text-slate-500">Dores Ativas</p>
+            <p className="text-2xl font-bold text-slate-800">{stats.pain}</p>
           </div>
         </div>
         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center space-x-4">
-          <div className="p-3 bg-indigo-50 text-indigo-600 rounded-lg">
-            <Tag size={24} />
+          <div className="p-3 bg-green-50 text-green-600 rounded-lg">
+            <TrendingUp size={24} />
           </div>
           <div>
-            <p className="text-sm text-slate-500">Categorias</p>
-            <p className="text-2xl font-bold text-slate-800">{new Set(data.map(d => d.category)).size}</p>
+            <p className="text-sm text-slate-500">Oportunidades</p>
+            <p className="text-2xl font-bold text-slate-800">{stats.opportunity}</p>
           </div>
         </div>
       </div>
@@ -187,28 +218,55 @@ const OrganizationView: React.FC<OrganizationViewProps> = ({ data, selectedIds, 
           </div>
         </div>
 
-        {/* Analytics View */}
+        {/* Strategic Balance Radar */}
         <div className="xl:col-span-1 bg-white rounded-xl shadow-sm border border-slate-100 p-6 sticky top-24 h-fit">
-          <h3 className="text-sm font-semibold text-slate-500 uppercase mb-6">Top Dores Identificadas</h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" width={80} style={{ fontSize: '10px' }} />
-                <Tooltip 
-                  cursor={{fill: '#f1f5f9'}}
-                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+          <h3 className="text-sm font-semibold text-slate-800 uppercase mb-2 flex items-center">
+            <PieChart size={16} className="mr-2 text-indigo-500"/>
+            Equilíbrio Estratégico
+          </h3>
+          <p className="text-xs text-slate-400 mb-6">Analisa a distribuição dos itens selecionados.</p>
+          
+          <div className="h-64 w-full relative">
+            <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
+              <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
+                <PolarGrid stroke="#e2e8f0" />
+                <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 10, fontWeight: 'bold' }} />
+                <PolarRadiusAxis angle={30} domain={[0, 'auto']} tick={false} axisLine={false} />
+                <Radar
+                  name="Estratégia"
+                  dataKey="A"
+                  stroke="#6366f1"
+                  strokeWidth={2}
+                  fill="#6366f1"
+                  fillOpacity={0.3}
                 />
-                <Bar dataKey="count" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={20} />
-              </BarChart>
+                <Tooltip 
+                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '12px' }}
+                  itemStyle={{ color: '#4f46e5', fontWeight: 'bold' }}
+                />
+              </RadarChart>
             </ResponsiveContainer>
           </div>
-          <div className="mt-6 p-4 bg-indigo-50 rounded-lg text-xs text-indigo-900 leading-relaxed border border-indigo-100">
-            <div className="flex items-center mb-2 font-bold text-indigo-700">
-               <Sparkles size={14} className="mr-1" /> Insight
+
+          <div className="mt-4 p-4 bg-gradient-to-br from-indigo-50 to-white rounded-lg border border-indigo-100 shadow-sm">
+            <div className="flex items-center mb-2 font-bold text-indigo-700 text-xs uppercase tracking-wider">
+               <Sparkles size={12} className="mr-1.5" /> Diagnóstico da IA
             </div>
-            Para cumprir sua Roma de <strong>"Atrair clientes utilizando IA"</strong>, observe que a maioria das dores está relacionada à falta de conhecimento técnico e estratégia.
+            <p className="text-xs text-slate-600 leading-relaxed italic">
+              "{getDiagnosis()}"
+            </p>
+          </div>
+          
+          <div className="mt-4 flex flex-wrap gap-2">
+             <span className="text-[10px] px-2 py-1 bg-red-50 text-red-600 rounded-full border border-red-100">
+                Dores: {stats.pain}
+             </span>
+             <span className="text-[10px] px-2 py-1 bg-blue-50 text-blue-600 rounded-full border border-blue-100">
+                Desejos: {stats.desire}
+             </span>
+             <span className="text-[10px] px-2 py-1 bg-yellow-50 text-yellow-600 rounded-full border border-yellow-100">
+                Objeções: {stats.objection}
+             </span>
           </div>
         </div>
       </div>

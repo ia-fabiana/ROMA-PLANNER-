@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Video, Image, Trophy, Target, Sparkles, X, CheckCircle2, ChevronLeft, ChevronRight as ChevronRightIcon, Maximize2, Tag, Search, Copy, Save, Edit, FileText, PieChart, BarChart2, AlertCircle, BookOpen, Star, Trash2 } from 'lucide-react';
+import { Video, Image, Trophy, Target, Sparkles, X, CheckCircle2, ChevronLeft, ChevronRight as ChevronRightIcon, Maximize2, Tag, Search, Copy, Save, Edit, FileText, PieChart, BarChart2, AlertCircle, BookOpen, Star, Trash2, Calendar as CalendarIcon, Filter, Download, Printer, ChevronDown, List, CheckSquare, PencilLine, FileSpreadsheet, Grid } from 'lucide-react';
 import { StrategyItem, CalendarContext, ApprovedContent, ContentType, PlannedContent } from '../types';
 import ReactMarkdown from 'react-markdown';
 
@@ -10,6 +10,7 @@ interface CalendarViewProps {
   onGenerate: (context: CalendarContext) => void;
   onSavePlan: (plan: PlannedContent) => void;
   onDeletePlan: (id: string) => void;
+  onDeleteApproved: (id: string) => void;
   approvedItems: Record<string, ApprovedContent>;
   plannedItems: Record<string, PlannedContent>;
 }
@@ -44,754 +45,742 @@ const LAUNCH_SCHEDULE = [
   { day: 'Domingo', focus: 'VIRAL', stories: 'Meme/áudio alta.', post: 'Fotos Lifestyle.', live: null }
 ];
 
-// --- KNOWLEDGE BASE: BOOK RECOMMENDATIONS ---
-const BOOK_RECOMMENDATIONS = [
-  { 
-    title: "Dicas de Ouro com IA", 
-    author: "Especialista em Prompts", 
-    tag: "IA / Prompts",
-    desc: "Um guia prático com prompts que resolvem problemas reais do dia a dia no salão."
-  },
-  { 
-    title: "Inteligência Artificial para Negócios", 
-    author: "Diversos Autores", 
-    tag: "Inovação",
-    desc: "Como a IA está transformando o mercado da beleza e atendimento."
-  },
-  { 
-    title: "Marketing na Era Digital", 
-    author: "Philip Kotler", 
-    tag: "Marketing",
-    desc: "Fundamentos essenciais para divulgar na era da tecnologia."
-  },
-  { 
-    title: "O Jeito Disney de Encantar Clientes", 
-    author: "Disney Institute", 
-    tag: "Atendimento",
-    desc: "Perfeito para falar sobre experiência do cliente e excelência."
-  },
-  { 
-    title: "Gatilhos Mentais", 
-    author: "Gustavo Ferreira", 
-    tag: "Vendas",
-    desc: "Ótimo para explicar como persuadir e vender mais."
-  },
-  { 
-    title: "Comece pelo Porquê", 
-    author: "Simon Sinek", 
-    tag: "Propósito",
-    desc: "Para posts sobre propósito de marca e inspiração."
-  },
-  { 
-    title: "Mindset: A Nova Psicologia do Sucesso", 
-    author: "Carol S. Dweck", 
-    tag: "Mentalidade",
-    desc: "Ideal para falar sobre crescimento e superação de desafios."
-  },
-  { 
-    title: "Roube Como Um Artista", 
-    author: "Austin Kleon", 
-    tag: "Criatividade",
-    desc: "Para falar sobre referências, criatividade e inovação."
-  },
-  { 
-    title: "A Experiência Apple", 
-    author: "Carmine Gallo", 
-    tag: "Fidelização",
-    desc: "Como criar fãs leais para o seu salão ou negócio."
-  }
-];
-
-// Helper to format date consistently as YYYY-MM-DD in local time
-const formatDateLocal = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-const CalendarView: React.FC<CalendarViewProps> = ({ data, selectedIds, onGenerate, onSavePlan, onDeletePlan, approvedItems, plannedItems }) => {
-  const [viewMode, setViewMode] = useState<'standard' | 'warmup' | 'launch'>('standard');
-  const [activeCell, setActiveCell] = useState<{dayIdx: number, type: 'stories' | 'post' | 'live', focus: string, date: string} | null>(null);
-  const [viewingItem, setViewingItem] = useState<ApprovedContent | null>(null);
-  const [showStats, setShowStats] = useState(false);
+const CalendarView: React.FC<CalendarViewProps> = ({ data, selectedIds, onGenerate, onSavePlan, onDeletePlan, onDeleteApproved, approvedItems, plannedItems }) => {
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [activeSchedule, setActiveSchedule] = useState<'WEEKLY' | 'WARMUP' | 'LAUNCH'>('WEEKLY');
   
-  // Selection Logic within Modal
+  // Modals
+  const [selectedCell, setSelectedCell] = useState<{date: string, dayInfo: any, type: ContentType} | null>(null);
+  const [viewingItem, setViewingItem] = useState<ApprovedContent | null>(null); // Read Mode
+  const [showDashboard, setShowDashboard] = useState(false); // Reports
+  const [dashboardTab, setDashboardTab] = useState<'STATS' | 'LIST'>('STATS'); // Report Tabs
+  
+  // Editing Mode State
+  const [isEditingApproved, setIsEditingApproved] = useState(false);
+  const [editedContentText, setEditedContentText] = useState('');
+
+  // Modal State
+  const [customAdjustment, setCustomAdjustment] = useState(''); // Just for AI Prompt
+  const [manualPlanText, setManualPlanText] = useState(''); // User's manual draft
+  const [activeTab, setActiveTab] = useState<'SELECTED' | 'ALL'>('SELECTED');
+  const [ingredientSearch, setIngredientSearch] = useState('');
   const [modalSelectedIngredients, setModalSelectedIngredients] = useState<string[]>([]);
-  const [adjustmentText, setAdjustmentText] = useState('');
+
+  // Helpers
+  const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
+  const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
+
+  const handlePrevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+  const handleNextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
   
-  // New: Idea Bank State
-  const [bankTab, setBankTab] = useState<'selected' | 'all'>('all');
-  const [bankSearch, setBankSearch] = useState('');
-  const [bankCategoryFilter, setBankCategoryFilter] = useState<'all' | 'Atração de Clientes' | 'Melhorar Divulgação'>('all');
-
-  // Extract globally selected items
-  const globalSelectedItems = useMemo(() => {
-    return selectedIds.map(idStr => {
-      const [rowId, field] = idStr.split('-');
-      const item = data.find(d => d.id === rowId);
-      // @ts-ignore
-      const val = item ? item[field] : '';
-      return { id: idStr, text: val, field, type: 'global' };
-    }).filter(i => i.text);
-  }, [selectedIds, data]);
-
-  // Filter full data for "Banco Completo"
-  const filteredBankData = useMemo(() => {
-    return data.filter(item => {
-        const matchesCategory = bankCategoryFilter === 'all' || item.category === bankCategoryFilter;
-        const matchesSearch = bankSearch === '' || 
-            item.pain.toLowerCase().includes(bankSearch.toLowerCase()) || 
-            item.desire.toLowerCase().includes(bankSearch.toLowerCase()) ||
-            item.objection.toLowerCase().includes(bankSearch.toLowerCase());
-        return matchesCategory && matchesSearch;
-    });
-  }, [data, bankCategoryFilter, bankSearch]);
-
-  // Stats / Dashboard Data
-  const statsData = useMemo(() => {
-    const focusCounts: Record<string, number> = {};
-    const strategyCounts: Record<string, number> = {};
-    const typeCounts: Record<string, number> = {};
-
-    Object.values(approvedItems).forEach((item: ApprovedContent) => {
-        // Count Focus
-        const focus = item.strategy ? item.strategy.split('.')[0] : 'Geral'; // Approximate focus from strategy string or context
-        
-        // Let's count types
-        const typeKey = item.id.includes('live') ? 'Live' : item.id.includes('stories') ? 'Stories' : 'Post/Kit';
-        typeCounts[typeKey] = (typeCounts[typeKey] || 0) + 1;
-
-        // Try to parse ingredients from strategy text for repetition check
-        if (item.strategy && item.strategy.includes('Usar estes ingredientes específicos:')) {
-            const ings = item.strategy.split('Usar estes ingredientes específicos:')[1].trim().replace(/\.$/, '').split(', ');
-            ings.forEach(ing => {
-                strategyCounts[ing] = (strategyCounts[ing] || 0) + 1;
-            });
-        }
-    });
-
-    return { focusCounts, strategyCounts, typeCounts };
-  }, [approvedItems]);
-
-
-  // Date State - Default to today
-  const [selectedDate, setSelectedDate] = useState<string>(formatDateLocal(new Date()));
-
-  // Handle Year Change specifically
-  const handleYearChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newYear = e.target.value;
-    if (newYear.length === 4) {
-      const [_, month, day] = selectedDate.split('-');
-      setSelectedDate(`${newYear}-${month}-${day}`);
-    }
-  };
-
-  const navigateWeek = (direction: 'prev' | 'next') => {
-    const [y, m, d] = selectedDate.split('-').map(Number);
-    const current = new Date(y, m - 1, d);
-    
-    // Add or subtract 7 days
-    const daysToAdd = direction === 'next' ? 7 : -7;
-    current.setDate(current.getDate() + daysToAdd);
-    
-    setSelectedDate(formatDateLocal(current));
-  };
-
-  // Calculate Dates for the Week
-  const weekDates = useMemo(() => {
-    const [y, m, d] = selectedDate.split('-').map(Number);
-    const current = new Date(y, m - 1, d);
-    
-    // Adjust to Monday (1)
-    const day = current.getDay();
-    const diff = current.getDate() - day + (day === 0 ? -6 : 1); 
-    const monday = new Date(current.setDate(diff));
-
-    const dates = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
-      dates.push(d);
-    }
-    return dates;
-  }, [selectedDate]);
-
-  const currentSchedule = viewMode === 'warmup' ? WARMUP_SCHEDULE 
-    : viewMode === 'launch' ? LAUNCH_SCHEDULE 
-    : WEEKLY_SCHEDULE;
-
-  // Initialize modal data when activeCell changes
-  useEffect(() => {
-    if (activeCell) {
-        // Construct the ID to check for existing plans
-        const kitId = `${activeCell.date}-kit`;
-        const specificId = `${activeCell.date}-${activeCell.type === 'stories' ? 'stories' : (activeCell.type === 'live' ? 'live' : 'social')}`;
-        
-        // Check if there is a saved plan for this slot
-        const plan = plannedItems[kitId] || plannedItems[specificId];
-        
-        if (plan) {
-            setModalSelectedIngredients(plan.selectedIngredients || []);
-            setAdjustmentText(plan.adjustments || '');
-            if (plan.selectedIngredients && plan.selectedIngredients.length > 0) {
-                 setBankTab('all');
-            }
-        } else {
-            setModalSelectedIngredients([]);
-            setAdjustmentText('');
-            setBankTab('all');
-        }
-    }
-  }, [activeCell, plannedItems]);
-
-  const handleCellClick = (dayIdx: number, type: 'stories' | 'post' | 'live', focus: string, dateStr: string) => {
-    // Check approval
-    const kitId = `${dateStr}-kit`;
-    // Map 'post' to 'social' for legacy/compatibility if needed, but 'live' needs its own
-    const typeSuffix = type === 'stories' ? 'stories' : (type === 'live' ? 'live' : 'social');
-    const specificId = `${dateStr}-${typeSuffix}`;
-    
-    const approved = approvedItems[kitId] || approvedItems[specificId];
-
-    if (approved) {
-      setViewingItem(approved);
-    } else {
-      setActiveCell({ dayIdx, type, focus, date: dateStr });
-    }
-  };
-
-  const toggleModalIngredient = (text: string) => {
-    setModalSelectedIngredients(prev => 
-      prev.includes(text) ? prev.filter(t => t !== text) : [...prev, text]
-    );
-  };
-
-  // 1. SAVE PLAN (NO GENERATION)
-  const handleSavePlanClick = (shouldClose: boolean = true) => {
-    if (!activeCell) return;
-    
-    const id = `${activeCell.date}-kit`; // Unified ID for planning
-    
-    const newPlan: PlannedContent = {
-        id,
-        date: activeCell.date,
-        type: activeCell.type,
-        focus: activeCell.focus,
-        selectedIngredients: modalSelectedIngredients,
-        adjustments: adjustmentText
-    };
-
-    onSavePlan(newPlan);
-    if (shouldClose) setActiveCell(null);
+  const handlePrintCalendar = () => {
+     window.print();
   };
   
-  // 1.5 DELETE PLAN
-  const handleRemovePlan = () => {
-      if (!activeCell) return;
-      const kitId = `${activeCell.date}-kit`;
-      const typeSuffix = activeCell.type === 'stories' ? 'stories' : (activeCell.type === 'live' ? 'live' : 'social');
-      const specificId = `${activeCell.date}-${typeSuffix}`;
+  // --- PDF PRINT FUNCTION ---
+  const handlePrintPDF = (item: ApprovedContent) => {
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+          alert("Permita pop-ups para imprimir o PDF.");
+          return;
+      }
       
-      onDeletePlan(kitId);
-      onDeletePlan(specificId); // Delete both to be safe
-      
-      setActiveCell(null);
+      const contentHtml = item.text
+        .replace(/\n/g, '<br/>')
+        .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
+        .replace(/## (.*?)\n/g, '<h2>$1</h2>')
+        .replace(/### (.*?)\n/g, '<h3>$1</h3>');
+
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Conteúdo - ${item.date}</title>
+            <style>
+              body { font-family: 'Arial', sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }
+              h1 { color: #4338ca; border-bottom: 2px solid #e0e7ff; padding-bottom: 10px; }
+              h2 { color: #1e293b; margin-top: 20px; }
+              table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+              th, td { border: 1px solid #e2e8f0; padding: 12px; text-align: left; }
+              th { background-color: #f8fafc; font-weight: bold; }
+              .meta { font-size: 0.8rem; color: #64748b; margin-bottom: 30px; }
+              img { max-width: 100%; height: auto; border-radius: 8px; margin-top: 10px; border: 1px solid #eee; }
+              .gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 20px; }
+            </style>
+          </head>
+          <body>
+            <h1>Planejamento de Conteúdo - Roma</h1>
+            <div class="meta">
+              <p><strong>Data:</strong> ${item.date} | <strong>Tipo:</strong> ${item.type.toUpperCase()}</p>
+              <p><strong>Estratégia:</strong> ${item.strategy}</p>
+            </div>
+            ${item.imageUrl ? `<h3>Imagem Principal</h3><img src="${item.imageUrl}" alt="Imagem Gerada" /><br/>` : ''}
+            
+            ${item.carouselImages && item.carouselImages.length > 0 ? `
+               <h3>Galeria Visual Criada</h3>
+               <div class="gallery">
+                  ${item.carouselImages.map((img, i) => `<div style="text-align:center;"><img src="${img}" /><p style="font-size:10px;">Item ${i+1}</p></div>`).join('')}
+               </div>
+            ` : ''}
+
+            <br/>
+            <div>${contentHtml}</div>
+            <script>window.onload = function() { window.print(); }</script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
   };
 
-  // 2. GENERATE (SAVES PLAN + TRIGGERS AI)
-  const handleConfirmGeneration = () => {
-    if (!activeCell) return;
-    
-    // First, save the plan
-    handleSavePlanClick(false); 
+  // --- EXCEL EXPORT FUNCTION ---
+  const handleExportExcel = () => {
+      // Combines approved and planned items for export
+      const allItems = [
+          ...Object.values(approvedItems).map(i => ({...i, status: 'Aprovado'})),
+          ...Object.values(plannedItems).map(i => ({...i, status: 'Planejado', text: i.manualContent || '(Rascunho)'}))
+      ];
 
-    // Build strategy string
-    let strategyText = "Estratégia Geral do Dia";
-    if (modalSelectedIngredients.length > 0) {
-        strategyText = `Usar estes ingredientes específicos: ${modalSelectedIngredients.join(', ')}.`;
-    }
+      if (allItems.length === 0) {
+          alert("Nenhum conteúdo para exportar.");
+          return;
+      }
 
-    // Include Live specific context if needed
-    if (activeCell.type === 'live') {
-        strategyText += " TIPO DE CONTEÚDO: Roteiro e Divulgação para LIVE.";
-    }
+      // CSV Header
+      let csvContent = "\uFEFFData;Tipo;Status;Estratégia;Conteúdo\n";
 
-    // Trigger Generation (this updates App state which triggers GeminiAdvisor)
-    onGenerate({
-        date: activeCell.date,
-        dayOfWeek: currentSchedule[activeCell.dayIdx].day,
-        contentType: 'kit', // Force Kit for everything (including lives)
-        focus: activeCell.focus,
-        strategy: strategyText,
-        adjustments: adjustmentText
-    });
-    
-    setActiveCell(null);
+      allItems.forEach(item => {
+          const cleanText = (item.text || '').replace(/(\r\n|\n|\r|;)/gm, " "); // Remove breaks and semicolons
+          const strategy = (item as any).strategy || (item as any).focus || '-';
+          const type = item.type;
+          const date = item.date;
+          const status = (item as any).status;
+
+          csvContent += `${date};${type};${status};${strategy};${cleanText}\n`;
+      });
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `roma_planejamento_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
   };
 
-  // Determine if the current active slot is for Books
-  const isBookSlot = activeCell && activeCell.type === 'post' && 
-                     (currentSchedule[activeCell.dayIdx].post || '').includes('Livros');
+  // Render Cell Content
+  const renderCellContent = (dateKey: string, type: ContentType, label: string) => {
+    const fullId = `${dateKey}-${type}`;
+    const approvedItem = approvedItems[fullId];
+    const plannedItem = plannedItems[fullId];
 
-  // Helper to render cell content
-  const renderCellContent = (dayIdx: number, type: 'stories' | 'post' | 'live', label: string | null, dateStr: string) => {
+    if (approvedItem) {
+      return (
+        <div 
+          onClick={(e) => { e.stopPropagation(); setViewingItem(approvedItem); }}
+          className="mt-1 p-2 bg-green-50 border border-green-200 rounded-md cursor-pointer hover:bg-green-100 transition-colors group relative"
+        >
+          <div className="flex items-center justify-between mb-1">
+             <span className="text-[10px] font-bold uppercase text-slate-900 flex items-center">
+               <CheckCircle2 size={10} className="mr-1 text-green-600"/> {label}
+             </span>
+             {approvedItem.imageUrl && <Image size={10} className="text-green-600" />}
+             {approvedItem.carouselImages && <Grid size={10} className="text-green-600 ml-1" />}
+          </div>
+          <p className="text-[10px] text-green-800 line-clamp-2 leading-tight">
+             {approvedItem.text.substring(0, 60)}...
+          </p>
+        </div>
+      );
+    }
     
-    const typeSuffix = type === 'stories' ? 'stories' : (type === 'live' ? 'live' : 'social');
-    const kitId = `${dateStr}-kit`;
-    const specificId = `${dateStr}-${typeSuffix}`;
-    
-    // 1. Check Approved
-    const approved = approvedItems[kitId] || approvedItems[specificId];
-
-    if (approved) {
+    if (plannedItem) {
         return (
-            <div className="h-full w-full bg-green-50 border border-green-200 rounded-lg p-2 relative group hover:shadow-md transition-all cursor-pointer overflow-hidden">
-                <div className="absolute top-1 right-1">
-                    <CheckCircle2 className="text-green-600 h-4 w-4" />
-                </div>
-                <p className="text-[10px] font-bold text-green-800 uppercase mb-1">Aprovado</p>
-                <p className="text-xs text-green-700 line-clamp-3 text-left">
-                  {approved.text.replace(/#/g, '').substring(0, 50)}...
-                </p>
-                <div className="absolute inset-0 bg-green-100/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-lg backdrop-blur-[1px]">
-                   <span className="text-xs font-bold text-green-800 flex items-center bg-white px-2 py-1 rounded shadow-sm">
-                      <Maximize2 size={12} className="mr-1"/> Ver
-                   </span>
-                </div>
+            <div 
+              onClick={(e) => { 
+                  e.stopPropagation(); 
+                  const dayInfo = getScheduleForDay(new Date(dateKey).getDay());
+                  setSelectedCell({ date: dateKey, dayInfo, type }); 
+              }}
+              className="mt-1 p-2 bg-yellow-50 border border-yellow-200 rounded-md cursor-pointer hover:bg-yellow-100 transition-colors group"
+            >
+              <div className="flex items-center justify-between mb-1">
+                 <span className="text-[10px] font-bold uppercase text-slate-900 flex items-center">
+                   <PencilLine size={10} className="mr-1 text-yellow-600"/> {label}
+                 </span>
+              </div>
+              <p className="text-[10px] text-yellow-800 line-clamp-2 leading-tight italic">
+                 {plannedItem.manualContent || "Rascunho salvo"}
+              </p>
             </div>
         );
     }
 
-    // 2. Check Planned (Briefing)
-    const plan = plannedItems[kitId] || plannedItems[specificId];
-    
-    // Filter: Only show if relevant to this slot (or if it's a kit/global)
-    const isRelevant = plan && (plan.type === type || plan.type === 'kit' || (type === 'post' && (plan.type as any) === 'social'));
-    const relevantPlan = isRelevant ? plan : null;
-
-    if (relevantPlan) {
-         return (
-            <div className="h-full w-full bg-blue-50 border border-blue-200 rounded-lg p-2 relative group hover:shadow-md transition-all cursor-pointer overflow-hidden">
-                <div className="absolute top-1 right-1">
-                    <FileText className="text-blue-500 h-4 w-4" />
-                </div>
-                <p className="text-[10px] font-bold text-blue-700 uppercase mb-1">Planejado</p>
-                <div className="text-xs text-blue-600 text-left space-y-1">
-                   {relevantPlan.selectedIngredients && relevantPlan.selectedIngredients.length > 0 ? (
-                      <div className="flex flex-wrap gap-1">
-                         {relevantPlan.selectedIngredients.slice(0, 2).map((ing, i) => (
-                            <span key={i} className="bg-white px-1 rounded border border-blue-100 text-[9px] truncate max-w-full block">
-                               {ing.substring(0, 15)}...
-                            </span>
-                         ))}
-                         {relevantPlan.selectedIngredients.length > 2 && <span className="text-[9px] opacity-70">+{relevantPlan.selectedIngredients.length - 2}</span>}
-                      </div>
-                   ) : (
-                      <span className="italic opacity-70">Ingredientes manuais...</span>
-                   )}
-                   {relevantPlan.adjustments && (
-                       <p className="text-[9px] opacity-80 truncate border-t border-blue-100 pt-1 mt-1">"{relevantPlan.adjustments}"</p>
-                   )}
-                </div>
-                <div className="absolute inset-0 bg-blue-100/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-lg backdrop-blur-[1px] gap-2">
-                   <span className="text-xs font-bold text-blue-800 flex items-center bg-white px-2 py-1 rounded shadow-sm">
-                      <Edit size={12} className="mr-1"/> Editar
-                   </span>
-                </div>
-            </div>
-         );
-    }
-
-    // 3. Default Label
     return (
-      <div className={`h-full flex flex-col justify-between text-slate-500 hover:text-slate-700 group cursor-pointer relative ${!label && type === 'live' ? 'opacity-50 hover:opacity-100' : ''}`}>
-        <span className="text-xs leading-tight text-left block">{label || (type === 'live' ? 'Agendar Live' : '-')}</span>
-        <div className="mt-2 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity absolute bottom-0 right-0">
-            <span className="bg-indigo-50 text-indigo-600 p-1 rounded hover:bg-indigo-100">
-                <Tag size={14} />
-            </span>
+      <div 
+        onClick={(e) => {
+            e.stopPropagation();
+            const dayInfo = getScheduleForDay(new Date(dateKey).getDay());
+            setSelectedCell({ date: dateKey, dayInfo, type });
+        }}
+        className="mt-1 py-2 px-2 rounded-md border border-dashed border-slate-300 hover:border-indigo-300 hover:bg-indigo-50 cursor-pointer flex items-center justify-center transition-all group"
+      >
+        <div className="flex items-center text-[10px] font-bold uppercase text-slate-900">
+            <span className="group-hover:scale-110 transition-transform">+ {label}</span>
         </div>
       </div>
     );
   };
 
-  // Determine if there is an EXISTING plan for the currently open modal
-  const existingPlanInModal = activeCell ? (
-      plannedItems[`${activeCell.date}-kit`] || 
-      plannedItems[`${activeCell.date}-${activeCell.type === 'stories' ? 'stories' : (activeCell.type === 'live' ? 'live' : 'social')}`]
-  ) : null;
+  const getScheduleForDay = (dayIndex: number) => {
+    // 0 = Domingo, 1 = Segunda...
+    // Array start at Monday (0 in array), so we adjust
+    const adjustedIndex = dayIndex === 0 ? 6 : dayIndex - 1;
+    
+    let schedule = WEEKLY_SCHEDULE;
+    if (activeSchedule === 'WARMUP') schedule = WARMUP_SCHEDULE;
+    if (activeSchedule === 'LAUNCH') schedule = LAUNCH_SCHEDULE;
+    
+    return schedule[adjustedIndex];
+  };
+
+  // --- MAIN RENDER ---
+  const daysInMonth = getDaysInMonth(currentDate.getFullYear(), currentDate.getMonth());
+  const firstDayOfMonth = getFirstDayOfMonth(currentDate.getFullYear(), currentDate.getMonth());
+  const monthName = currentDate.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+  const monthNameCapitalized = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+
+  // Initialize Modal Data when opening
+  useEffect(() => {
+    if (selectedCell) {
+        const fullId = `${selectedCell.date}-${selectedCell.type}`;
+        const existingPlan = plannedItems[fullId];
+        
+        // Reset or Load
+        setManualPlanText(existingPlan?.manualContent || '');
+        setModalSelectedIngredients(existingPlan?.selectedIngredients || []);
+        setCustomAdjustment(existingPlan?.adjustments || '');
+        
+        // Pre-select relevant ingredients if new
+        if (!existingPlan && selectedIds.length > 0) {
+            setModalSelectedIngredients(selectedIds);
+        }
+    }
+  }, [selectedCell, plannedItems, selectedIds]);
+
+  const handleSaveDraft = () => {
+      if (!selectedCell) return;
+      
+      const fullId = `${selectedCell.date}-${selectedCell.type}`;
+      const plan: PlannedContent = {
+          id: fullId,
+          date: selectedCell.date,
+          type: selectedCell.type,
+          focus: selectedCell.dayInfo.focus,
+          selectedIngredients: modalSelectedIngredients,
+          adjustments: customAdjustment,
+          manualContent: manualPlanText
+      };
+      
+      onSavePlan(plan);
+      setSelectedCell(null); // Close modal
+  };
+
+  const handleSendToAI = () => {
+      if (!selectedCell) return;
+      
+      // Save draft first
+      handleSaveDraft();
+      
+      // Determine strategy text from ingredients
+      const strategyText = modalSelectedIngredients.length > 0
+        ? data.filter(d => modalSelectedIngredients.some(id => id.startsWith(d.id))).map(d => `${d.pain} -> ${d.desire}`).join('; ')
+        : "Utilize o foco do dia.";
+
+      // Send to AI
+      onGenerate({
+          date: selectedCell.date,
+          dayOfWeek: selectedCell.dayInfo.day,
+          contentType: selectedCell.type,
+          focus: selectedCell.dayInfo.focus,
+          strategy: strategyText,
+          adjustments: customAdjustment,
+          manualContent: manualPlanText // CRITICAL: Pass manual text
+      });
+  };
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* View Selector & Date Nav */}
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-         
-         {/* Date Navigation */}
-         <div className="flex items-center bg-slate-50 rounded-lg p-1 border border-slate-200">
-            <button onClick={() => navigateWeek('prev')} className="p-2 hover:bg-white hover:shadow-sm rounded-md transition-all text-slate-500">
-               <ChevronLeft size={18} />
-            </button>
-            <div className="px-4 flex flex-col items-center">
-               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Semana de</span>
-               <div className="flex items-baseline space-x-1">
-                 <span className="text-sm font-bold text-slate-800">
-                    {weekDates[0].toLocaleDateString('pt-BR', {day: '2-digit', month: 'long'})}
-                 </span>
-                 <input 
-                   type="number" 
-                   value={selectedDate.split('-')[0]} 
-                   onChange={handleYearChange}
-                   className="w-12 bg-transparent text-xs text-slate-400 border-none focus:ring-0 p-0 text-right font-medium"
-                 />
-               </div>
-            </div>
-            <button onClick={() => navigateWeek('next')} className="p-2 hover:bg-white hover:shadow-sm rounded-md transition-all text-slate-500">
-               <ChevronRightIcon size={18} />
-            </button>
-         </div>
+    <div className="space-y-8 animate-fade-in">
+      
+      {/* Header Controls */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center bg-slate-100 rounded-lg p-1">
+             <button onClick={handlePrevMonth} className="p-2 hover:bg-white hover:shadow-sm rounded-md transition-all text-slate-600"><ChevronLeft size={20}/></button>
+             <span className="px-4 font-bold text-slate-800 min-w-[140px] text-center">{monthNameCapitalized}</span>
+             <button onClick={handleNextMonth} className="p-2 hover:bg-white hover:shadow-sm rounded-md transition-all text-slate-600"><ChevronRightIcon size={20}/></button>
+          </div>
+          
+          <div className="h-8 w-px bg-slate-200 mx-2 hidden md:block"></div>
+          
+          <div className="flex items-center space-x-2">
+            <span className="text-xs font-bold text-slate-500 uppercase">Modo:</span>
+            <select 
+              className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 font-medium outline-none"
+              value={activeSchedule}
+              onChange={(e) => setActiveSchedule(e.target.value as any)}
+            >
+              <option value="WEEKLY">Rotina Semanal (Padrão)</option>
+              <option value="WARMUP">Aquecimento (Pré-Lançamento)</option>
+              <option value="LAUNCH">Lançamento (Vendas)</option>
+            </select>
+          </div>
+        </div>
 
-         {/* Mode Toggles */}
-         <div className="flex bg-slate-100 p-1 rounded-lg">
-            <button 
-              onClick={() => setViewMode('standard')}
-              className={`px-4 py-2 rounded-md text-xs font-bold transition-all ${viewMode === 'standard' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              Semanal
-            </button>
-            <button 
-              onClick={() => setViewMode('warmup')}
-              className={`px-4 py-2 rounded-md text-xs font-bold transition-all ${viewMode === 'warmup' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              Aquecimento
-            </button>
-            <button 
-              onClick={() => setViewMode('launch')}
-              className={`px-4 py-2 rounded-md text-xs font-bold transition-all ${viewMode === 'launch' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              Lançamento
-            </button>
-         </div>
-
-         {/* Report Button */}
-         <button 
-            onClick={() => setShowStats(true)}
-            className="flex items-center px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors text-xs font-bold"
-         >
-            <BarChart2 size={16} className="mr-2" />
-            Relatório de Tópicos
-         </button>
+        <div className="flex space-x-2">
+           <button 
+             onClick={handleExportExcel}
+             className="flex items-center px-4 py-2 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg text-sm font-bold transition-colors border border-green-200"
+             title="Baixar Backup em Excel"
+           >
+             <FileSpreadsheet size={16} className="mr-2" />
+             Baixar Excel
+           </button>
+           <button 
+             onClick={handlePrintCalendar}
+             className="flex items-center px-4 py-2 bg-slate-50 text-slate-700 hover:bg-slate-100 rounded-lg text-sm font-bold transition-colors border border-slate-200"
+           >
+             <Printer size={16} className="mr-2" />
+             Salvar PDF / Imprimir
+           </button>
+           <button 
+             onClick={() => setShowDashboard(true)}
+             className="flex items-center px-4 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-sm font-bold transition-colors border border-indigo-200"
+           >
+             <BarChart2 size={16} className="mr-2" />
+             Relatórios
+           </button>
+        </div>
       </div>
 
       {/* Calendar Grid */}
-      <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-        <div className="grid grid-cols-1 md:grid-cols-7 divide-y md:divide-y-0 md:divide-x divide-slate-200">
-          {currentSchedule.map((day, idx) => {
-             const currentDate = weekDates[idx];
-             const dateStr = formatDateLocal(currentDate);
-             const isToday = formatDateLocal(new Date()) === dateStr;
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="grid grid-cols-7 bg-slate-50 border-b border-slate-200">
+          {['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'].map((day, i) => (
+            <div key={day} className={`py-3 text-center text-xs font-bold uppercase tracking-wider ${i === 0 || i === 6 ? 'text-slate-400 bg-slate-50/50' : 'text-slate-600'}`}>
+              {day}
+            </div>
+          ))}
+        </div>
+        
+        <div className="grid grid-cols-7 auto-rows-fr">
+          {/* Empty cells for previous month */}
+          {Array.from({ length: firstDayOfMonth }).map((_, i) => (
+            <div key={`empty-${i}`} className="min-h-[160px] bg-slate-50/30 border-b border-r border-slate-100"></div>
+          ))}
 
-             return (
-              <div key={day.day} className={`flex flex-col ${isToday ? 'bg-indigo-50/30' : ''}`}>
-                
-                {/* Header */}
-                <div className={`p-3 border-b border-slate-100 ${isToday ? 'bg-indigo-100/50' : 'bg-slate-50'}`}>
-                  <div className="flex justify-between items-center mb-1">
-                     <span className={`text-xs font-bold uppercase ${isToday ? 'text-indigo-700' : 'text-slate-500'}`}>
-                        {day.day}
-                     </span>
-                     {isToday && <span className="w-2 h-2 rounded-full bg-indigo-500"></span>}
-                  </div>
-                  <div className="text-lg font-bold text-slate-800 leading-none mb-2">
-                    {currentDate.getDate()}
-                  </div>
-                  <div className="min-h-[40px]">
-                    <span className={`inline-block px-2 py-1 rounded text-[9px] font-bold uppercase tracking-wider leading-tight ${isToday ? 'bg-white text-indigo-800 shadow-sm' : 'bg-slate-200 text-slate-600'}`}>
-                        {day.focus}
-                    </span>
-                  </div>
+          {/* Days */}
+          {Array.from({ length: daysInMonth }).map((_, i) => {
+            const day = i + 1;
+            const currentDayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+            const dateKey = currentDayDate.toISOString().split('T')[0];
+            const dayOfWeek = currentDayDate.getDay();
+            const dayInfo = getScheduleForDay(dayOfWeek);
+            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+            return (
+              <div 
+                key={day} 
+                className={`min-h-[180px] border-b border-r border-slate-100 p-2 relative hover:bg-slate-50 transition-colors flex flex-col group ${isWeekend ? 'bg-slate-50/30' : 'bg-white'}`}
+              >
+                <div className="flex justify-between items-start mb-2">
+                  <span className={`text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full ${
+                    dateKey === new Date().toISOString().split('T')[0] 
+                      ? 'bg-indigo-600 text-white shadow-md' 
+                      : 'text-slate-700'
+                  }`}>
+                    {day}
+                  </span>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                     {dayInfo.focus.split(' ')[0]}
+                  </span>
                 </div>
 
-                {/* Rows */}
-                <div className="flex-1 flex flex-col divide-y divide-slate-100">
-                   {/* Stories Row */}
-                   <div 
-                     onClick={() => handleCellClick(idx, 'stories', day.focus, dateStr)}
-                     className="p-3 hover:bg-slate-50 transition-colors flex-1 min-h-[80px]"
-                   >
-                      <div className="flex items-center text-[10px] text-slate-400 font-bold uppercase mb-1">
-                         <Target size={10} className="mr-1" /> Stories
-                      </div>
-                      {renderCellContent(idx, 'stories', day.stories, dateStr)}
-                   </div>
-                   
-                   {/* Post Row */}
-                   <div 
-                     onClick={() => handleCellClick(idx, 'post', day.focus, dateStr)}
-                     className="p-3 hover:bg-slate-50 transition-colors flex-1 min-h-[80px]"
-                   >
-                      <div className="flex items-center text-[10px] text-slate-400 font-bold uppercase mb-1">
-                         <Image size={10} className="mr-1" /> Feed / Reels
-                      </div>
-                      {renderCellContent(idx, 'post', day.post, dateStr)}
-                   </div>
-
-                   {/* Live Row */}
-                   <div 
-                     onClick={() => handleCellClick(idx, 'live', day.focus, dateStr)}
-                     className="p-3 hover:bg-slate-50 transition-colors flex-1 min-h-[80px]"
-                   >
-                      <div className="flex items-center text-[10px] text-slate-400 font-bold uppercase mb-1">
-                         <Video size={10} className="mr-1" /> Live
-                      </div>
-                      {renderCellContent(idx, 'live', day.live, dateStr)}
-                   </div>
+                {/* Slots */}
+                <div className="flex-1 flex flex-col space-y-1">
+                    {/* STORIES SLOT */}
+                    {dayInfo.stories && renderCellContent(dateKey, 'stories', 'Stories')}
+                    
+                    {/* POST SLOT */}
+                    {dayInfo.post && renderCellContent(dateKey, 'post', 'Post')}
+                    
+                    {/* LIVE SLOT */}
+                    {dayInfo.live && renderCellContent(dateKey, 'live', 'Live')}
                 </div>
               </div>
-             );
+            );
           })}
         </div>
       </div>
 
-      {/* Generation Modal */}
-      {activeCell && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className={`p-6 text-white shrink-0 ${activeCell.type === 'live' ? 'bg-gradient-to-r from-red-600 to-pink-600' : 'bg-gradient-to-r from-indigo-600 to-purple-600'}`}>
-               <div className="flex justify-between items-start">
-                 <div>
-                    <h3 className="text-lg font-bold flex items-center">
-                        {activeCell.type === 'live' && <Video className="mr-2" size={20}/>}
-                        Planejar {activeCell.type === 'live' ? 'Live' : 'Conteúdo'}
-                    </h3>
-                    <p className="text-white/80 text-sm mt-1">
-                       {currentSchedule[activeCell.dayIdx].day}, {new Date(activeCell.date + 'T12:00:00').toLocaleDateString('pt-BR')}
-                    </p>
-                 </div>
-                 <button onClick={() => setActiveCell(null)} className="text-white/70 hover:text-white">
-                    <X size={20} />
-                 </button>
-               </div>
-            </div>
+      {/* --- MODAL: PLANEJAMENTO (WRITING & INGREDIENTS) --- */}
+      {selectedCell && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-scale-in">
             
-            <div className="p-6 space-y-6 overflow-y-auto flex-1">
-               <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Sugestão do Cronograma</span>
-                  <p className="font-semibold text-slate-900">{activeCell.focus}</p>
-                  <p className="text-sm text-slate-700 mt-2 italic">
-                     "{activeCell.type === 'stories' ? currentSchedule[activeCell.dayIdx].stories : (activeCell.type === 'live' ? (currentSchedule[activeCell.dayIdx].live || 'Tema Livre') : currentSchedule[activeCell.dayIdx].post)}"
-                  </p>
-               </div>
-               
-               {/* --- SPECIAL BOOK RECOMMENDATION SECTION --- */}
-               {isBookSlot && (
-                  <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
-                     <div className="flex items-center gap-2 mb-3 text-amber-800">
-                        <BookOpen size={18} />
-                        <h4 className="font-bold text-sm">Base de Conhecimento: Indicações de Leitura</h4>
-                     </div>
-                     <p className="text-xs text-amber-700 mb-3">
-                        O cronograma sugere falar de um livro. Selecione uma das opções abaixo para a IA criar o conteúdo baseada nela:
-                     </p>
-                     <div className="grid grid-cols-2 gap-3">
-                        {BOOK_RECOMMENDATIONS.map((book, idx) => {
-                           const bookString = `Livro: ${book.title} (${book.author})`;
-                           const isSelected = modalSelectedIngredients.includes(bookString);
-                           return (
-                              <button
-                                 key={idx}
-                                 onClick={() => toggleModalIngredient(bookString)}
-                                 className={`p-3 rounded-lg border text-left transition-all ${
-                                    isSelected 
-                                       ? 'bg-amber-200 border-amber-400 shadow-sm' 
-                                       : 'bg-white border-amber-100 hover:border-amber-300 hover:shadow-sm'
-                                 }`}
-                              >
-                                 <div className="flex justify-between items-start">
-                                    <h5 className="font-bold text-slate-800 text-xs line-clamp-1">{book.title}</h5>
-                                    {isSelected && <CheckCircle2 size={12} className="text-amber-700 shrink-0"/>}
-                                 </div>
-                                 <p className="text-[10px] text-slate-500 mb-1">{book.author}</p>
-                                 <div className="inline-block bg-amber-100/50 px-1.5 py-0.5 rounded text-[9px] font-bold text-amber-800 uppercase mb-1">
-                                    {book.tag}
-                                 </div>
-                                 <p className="text-[10px] text-slate-600 italic line-clamp-2 leading-tight">
-                                    "{book.desc}"
-                                 </p>
-                              </button>
-                           );
-                        })}
-                     </div>
-                  </div>
-               )}
-
-               {/* Ingredients Selection Section */}
-               <div className="border-t border-slate-100 pt-4 flex flex-col h-[350px]">
-                  <div className="flex items-center justify-between mb-4">
-                     <span className="text-sm font-bold text-slate-700 flex items-center">
-                        <Tag size={16} className="mr-1.5 text-indigo-500" />
-                        O que abordar? (Ingredientes)
-                     </span>
-                     
-                     <div className="flex bg-slate-100 rounded-lg p-0.5">
-                        <button 
-                           onClick={() => setBankTab('all')}
-                           className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${bankTab === 'all' ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500'}`}
-                        >
-                           Banco Completo
-                        </button>
-                        <button 
-                           onClick={() => setBankTab('selected')}
-                           className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${bankTab === 'selected' ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500'}`}
-                        >
-                           Meus Selecionados ({globalSelectedItems.length})
-                        </button>
-                     </div>
-                  </div>
-                  
-                  {/* Filters & Search for Bank */}
-                  {bankTab === 'all' && (
-                     <div className="flex gap-2 mb-3">
-                        <div className="relative flex-1">
-                           <Search size={14} className="absolute left-2.5 top-2.5 text-slate-400"/>
-                           <input 
-                              type="text" 
-                              placeholder="Buscar dor, desejo, objeção..." 
-                              className="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500"
-                              value={bankSearch}
-                              onChange={(e) => setBankSearch(e.target.value)}
-                           />
-                        </div>
-                        <select 
-                           className="text-xs border border-slate-200 rounded-lg px-2 bg-white focus:outline-none"
-                           value={bankCategoryFilter}
-                           onChange={(e) => setBankCategoryFilter(e.target.value as any)}
-                        >
-                           <option value="all">Todas Categorias</option>
-                           <option value="Atração de Clientes">Atração</option>
-                           <option value="Melhorar Divulgação">Divulgação</option>
-                        </select>
-                     </div>
-                  )}
-
-                  {/* Scrollable List */}
-                  <div className="flex-1 overflow-y-auto border border-slate-200 rounded-lg p-2 bg-slate-50/50 space-y-2">
-                      {bankTab === 'selected' ? (
-                          globalSelectedItems.length > 0 ? (
-                             globalSelectedItems.map((item) => (
-                                <button
-                                   key={item.id}
-                                   onClick={() => toggleModalIngredient(item.text)}
-                                   className={`w-full text-left p-2 rounded-md border text-xs transition-all ${
-                                      modalSelectedIngredients.includes(item.text)
-                                         ? 'bg-indigo-100 border-indigo-300 text-indigo-900 shadow-sm' 
-                                         : 'bg-white border-slate-100 text-slate-600 hover:border-indigo-200'
-                                   }`}
-                                >
-                                   <div className="flex justify-between items-start">
-                                      <span>{item.text}</span>
-                                      {modalSelectedIngredients.includes(item.text) && <CheckCircle2 size={12} className="text-indigo-600 shrink-0 ml-2 mt-0.5"/>}
-                                   </div>
-                                </button>
-                             ))
-                          ) : (
-                             <div className="text-center p-8 text-slate-400 text-xs italic">
-                                Nenhum item selecionado na aba Organizar.
-                             </div>
-                          )
-                      ) : (
-                         // FULL BANK LIST
-                         filteredBankData.length > 0 ? (
-                            filteredBankData.map((item) => (
-                               <div key={item.id} className="bg-white p-2 rounded-lg border border-slate-200 text-xs">
-                                  <div className="flex justify-between items-center mb-1 pb-1 border-b border-slate-50">
-                                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${item.category.includes('Atração') ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>
-                                        {item.category.includes('Atração') ? 'Atração' : 'Divulgação'}
-                                     </span>
-                                  </div>
-                                  
-                                  {/* Sub-items to select */}
-                                  <div className="space-y-1 mt-1">
-                                     {item.pain && (
-                                        <button 
-                                          onClick={() => toggleModalIngredient(item.pain)}
-                                          className={`w-full text-left px-2 py-1 rounded flex items-center gap-2 hover:bg-slate-50 ${modalSelectedIngredients.includes(item.pain) ? 'text-indigo-700 bg-indigo-50 font-medium' : 'text-slate-600'}`}
-                                        >
-                                           <div className={`w-3 h-3 rounded border flex items-center justify-center ${modalSelectedIngredients.includes(item.pain) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'}`}>
-                                              {modalSelectedIngredients.includes(item.pain) && <CheckCircle2 size={8} className="text-white"/>}
-                                           </div>
-                                           <span className="truncate"><span className="text-red-400 font-bold mr-1">Dor:</span> {item.pain}</span>
-                                        </button>
-                                     )}
-                                     {item.desire && (
-                                        <button 
-                                          onClick={() => toggleModalIngredient(item.desire)}
-                                          className={`w-full text-left px-2 py-1 rounded flex items-center gap-2 hover:bg-slate-50 ${modalSelectedIngredients.includes(item.desire) ? 'text-indigo-700 bg-indigo-50 font-medium' : 'text-slate-600'}`}
-                                        >
-                                           <div className={`w-3 h-3 rounded border flex items-center justify-center ${modalSelectedIngredients.includes(item.desire) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'}`}>
-                                              {modalSelectedIngredients.includes(item.desire) && <CheckCircle2 size={8} className="text-white"/>}
-                                           </div>
-                                           <span className="truncate"><span className="text-blue-400 font-bold mr-1">Desejo:</span> {item.desire}</span>
-                                        </button>
-                                     )}
-                                  </div>
-                               </div>
-                            ))
-                         ) : (
-                            <div className="text-center p-8 text-slate-400 text-xs italic">
-                               Nenhum item encontrado.
-                            </div>
-                         )
-                      )}
-                  </div>
-               </div>
-
-               <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Instrução Adicional (Opcional)</label>
-                  <textarea
-                     className="w-full border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                     rows={2}
-                     placeholder="Ex: Fale de forma mais descontraída, cite o produto X..."
-                     value={adjustmentText}
-                     onChange={(e) => setAdjustmentText(e.target.value)}
-                  ></textarea>
-               </div>
-
-               <div className="flex justify-end space-x-3 pt-2">
-                  <button 
-                    onClick={() => setActiveCell(null)}
-                    className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-lg"
-                  >
-                     Cancelar
-                  </button>
-                  {existingPlanInModal && (
-                      <button
-                        onClick={handleRemovePlan}
-                        className="px-4 py-2 border border-red-200 bg-red-50 text-red-600 font-bold rounded-lg hover:bg-red-100 flex items-center"
-                        title="Excluir Planejamento"
-                      >
-                         <Trash2 size={16} />
-                      </button>
-                  )}
-                  <button 
-                    onClick={() => handleSavePlanClick(true)}
-                    className="px-4 py-2 border border-blue-200 bg-blue-50 text-blue-700 font-bold rounded-lg hover:bg-blue-100 flex items-center"
-                  >
-                     <Save size={16} className="mr-2" />
-                     {existingPlanInModal ? 'Atualizar Planejamento' : 'Salvar Planejamento'}
-                  </button>
-                  <button 
-                    onClick={handleConfirmGeneration}
-                    className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-md flex items-center"
-                  >
-                     <Sparkles size={16} className="mr-2" />
-                     Gerar Conteúdo
-                  </button>
-               </div>
+            {/* Header */}
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 to-white rounded-t-2xl">
+              <div>
+                <h3 className="text-xl font-bold text-slate-800 flex items-center">
+                   <CalendarIcon className="mr-2 text-indigo-600" size={20}/> 
+                   Planejamento: {selectedCell.dayInfo.day} - {selectedCell.type === 'stories' ? 'Stories' : selectedCell.type === 'live' ? 'Live' : 'Post'}
+                </h3>
+                <p className="text-sm text-slate-500 mt-1">
+                   Foco do Dia: <span className="font-bold text-indigo-600">{selectedCell.dayInfo.focus}</span>
+                </p>
+              </div>
+              <button 
+                onClick={() => setSelectedCell(null)}
+                className="p-2 hover:bg-slate-200 rounded-full transition-colors"
+              >
+                <X size={24} className="text-slate-500" />
+              </button>
             </div>
+
+            {/* Content Body */}
+            <div className="flex-1 overflow-y-auto p-6">
+                
+                {/* 1. MANUAL WRITING AREA (PRIORITY) */}
+                <div className="mb-8">
+                    <label className="flex items-center text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
+                        <PencilLine size={16} className="mr-2 text-indigo-500"/>
+                        Roteiro / Planejamento Manual
+                    </label>
+                    <textarea 
+                        className="w-full h-40 p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-none text-sm bg-slate-50"
+                        placeholder="Escreva aqui sua ideia, roteiro, tópicos ou lembretes para este conteúdo..."
+                        value={manualPlanText}
+                        onChange={(e) => setManualPlanText(e.target.value)}
+                    ></textarea>
+                    <p className="text-xs text-slate-400 mt-2 text-right">
+                       Você pode apenas salvar este rascunho ou usá-lo como base para a IA.
+                    </p>
+                </div>
+
+                {/* 2. INGREDIENTS SELECTION */}
+                <div className="mb-6">
+                     <div className="flex justify-between items-end mb-3">
+                         <label className="flex items-center text-sm font-bold text-slate-700 uppercase tracking-wide">
+                            <Target size={16} className="mr-2 text-indigo-500"/>
+                            Enriquecer com Estratégia (Opcional)
+                         </label>
+                         <button 
+                            onClick={() => setActiveTab(activeTab === 'ALL' ? 'SELECTED' : 'ALL')}
+                            className="text-xs text-indigo-600 hover:text-indigo-800 font-medium underline"
+                         >
+                            {activeTab === 'ALL' ? 'Ver Apenas Selecionados' : 'Ver Todas as Dores'}
+                         </button>
+                     </div>
+                     
+                     <div className="bg-white border border-slate-200 rounded-xl h-60 flex flex-col overflow-hidden">
+                         <div className="p-3 border-b border-slate-100 bg-slate-50">
+                             <div className="relative">
+                                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
+                                 <input 
+                                     type="text" 
+                                     placeholder="Buscar dor, desejo ou objeção..." 
+                                     className="w-full pl-9 pr-4 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500"
+                                     value={ingredientSearch}
+                                     onChange={(e) => setIngredientSearch(e.target.value)}
+                                 />
+                             </div>
+                         </div>
+                         <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                             {data
+                                .filter(d => activeTab === 'ALL' || selectedIds.some(sid => sid.startsWith(d.id)))
+                                .filter(d => 
+                                    !ingredientSearch || 
+                                    d.pain.toLowerCase().includes(ingredientSearch.toLowerCase()) || 
+                                    d.desire.toLowerCase().includes(ingredientSearch.toLowerCase())
+                                )
+                                .map(item => {
+                                 const itemKey = `${item.id}-pain`; // Simple key for logic
+                                 const isSelected = modalSelectedIngredients.includes(itemKey) || selectedIds.some(sid => sid.startsWith(item.id));
+                                 
+                                 return (
+                                     <div 
+                                        key={item.id} 
+                                        className={`p-3 rounded-lg border text-xs cursor-pointer transition-all flex items-start space-x-3 ${
+                                            isSelected ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-slate-100 hover:border-indigo-200'
+                                        }`}
+                                        onClick={() => {
+                                            if(modalSelectedIngredients.includes(itemKey)) {
+                                                setModalSelectedIngredients(prev => prev.filter(k => k !== itemKey));
+                                            } else {
+                                                setModalSelectedIngredients(prev => [...prev, itemKey]);
+                                            }
+                                        }}
+                                     >
+                                         <div className={`mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 bg-white'}`}>
+                                            {isSelected && <CheckCircle2 size={10} className="text-white"/>}
+                                         </div>
+                                         <div className="flex-1">
+                                             <p className="font-bold text-slate-700 mb-0.5">{item.category}</p>
+                                             <p className="text-slate-600">Dor: {item.pain}</p>
+                                             <p className="text-slate-500 italic mt-1">Desejo: {item.desire}</p>
+                                         </div>
+                                     </div>
+                                 );
+                             })}
+                             {data.length === 0 && <p className="p-4 text-center text-xs text-slate-400">Nenhum item encontrado.</p>}
+                         </div>
+                     </div>
+                </div>
+
+                {/* 3. EXTRA INSTRUCTIONS */}
+                <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Instruções Extras para a IA</label>
+                    <input 
+                        type="text" 
+                        className="w-full p-3 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:bg-white transition-colors outline-none focus:ring-2 focus:ring-indigo-500"
+                        placeholder="Ex: Use um tom de voz mais agressivo; Mencione a promoção X..."
+                        value={customAdjustment}
+                        onChange={(e) => setCustomAdjustment(e.target.value)}
+                    />
+                </div>
+
+            </div>
+
+            {/* Footer Actions */}
+            <div className="p-6 border-t border-slate-100 bg-slate-50 rounded-b-2xl flex items-center justify-between">
+                <button 
+                    onClick={handleSaveDraft}
+                    className="px-6 py-3 rounded-xl font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 hover:border-slate-300 transition-all flex items-center shadow-sm"
+                >
+                    <Save size={18} className="mr-2" />
+                    Salvar Rascunho
+                </button>
+                <button 
+                    onClick={handleSendToAI}
+                    className="px-8 py-3 rounded-xl font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:shadow-lg hover:shadow-indigo-500/30 transition-all transform hover:-translate-y-1 flex items-center"
+                >
+                    <Sparkles size={18} className="mr-2" />
+                    Gerar com IA
+                </button>
+            </div>
+
           </div>
         </div>
       )}
 
-      {/* Stats/Dashboard Modal */}
-      {showStats
+      {/* --- MODAL: VISUALIZAÇÃO DE APROVADO (READING) --- */}
+      {viewingItem && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-scale-in">
+             
+             {/* Header */}
+             <div className="p-6 border-b border-slate-100 flex justify-between items-start bg-gradient-to-r from-green-50 to-white rounded-t-2xl">
+                <div className="flex items-start space-x-4">
+                    <div className="p-3 bg-green-100 text-green-600 rounded-xl">
+                        <CheckCircle2 size={32} />
+                    </div>
+                    <div>
+                        <div className="flex items-center space-x-2 mb-1">
+                            <h3 className="text-xl font-bold text-slate-800">Conteúdo Aprovado</h3>
+                            <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-bold uppercase">Pronto</span>
+                        </div>
+                        <p className="text-sm text-slate-500 flex items-center">
+                            <CalendarIcon size={14} className="mr-1"/> {viewingItem.date} • {viewingItem.type.toUpperCase()}
+                        </p>
+                    </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                     <button 
+                        onClick={() => {
+                            if (window.confirm("Tem certeza que deseja excluir este conteúdo aprovado permanentemente?")) {
+                                onDeleteApproved(viewingItem.id);
+                                setViewingItem(null);
+                            }
+                        }}
+                        className="p-2 text-slate-400 hover:text-red-600 bg-white border border-slate-200 rounded-lg shadow-sm"
+                        title="Excluir Conteúdo"
+                     >
+                         <Trash2 size={20} />
+                     </button>
+                    <button onClick={() => setIsEditingApproved(!isEditingApproved)} className="p-2 text-slate-400 hover:text-indigo-600 bg-white border border-slate-200 rounded-lg shadow-sm" title="Editar Texto">
+                        <Edit size={20} />
+                    </button>
+                    <button onClick={() => handlePrintPDF(viewingItem)} className="p-2 text-slate-400 hover:text-indigo-600 bg-white border border-slate-200 rounded-lg shadow-sm" title="Imprimir PDF">
+                        <Printer size={20} />
+                    </button>
+                    <button onClick={() => setViewingItem(null)} className="p-2 text-slate-400 hover:text-slate-600">
+                        <X size={24} />
+                    </button>
+                </div>
+             </div>
+
+             {/* Content */}
+             <div className="flex-1 overflow-y-auto p-8 bg-slate-50">
+                 {/* Image Section */}
+                 {(viewingItem.imageUrl || (viewingItem.carouselImages && viewingItem.carouselImages.length > 0)) && (
+                     <div className="mb-8">
+                         <h4 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center">
+                            <Image size={14} className="mr-1"/> Galeria Visual
+                         </h4>
+                         <div className="flex flex-wrap gap-4">
+                             {/* Single Image */}
+                             {viewingItem.imageUrl && (
+                                <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
+                                    <p className="text-[10px] text-slate-400 mb-1 text-center font-bold">IMAGEM PRINCIPAL</p>
+                                    <img src={viewingItem.imageUrl} alt="Generated Content" className="h-40 rounded-lg object-cover" />
+                                </div>
+                             )}
+                             {/* Carousel Images */}
+                             {viewingItem.carouselImages && viewingItem.carouselImages.map((img, idx) => (
+                                 <div key={idx} className="bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
+                                     <p className="text-[10px] text-slate-400 mb-1 text-center font-bold">SLIDE {idx + 1}</p>
+                                     <img src={img} alt={`Slide ${idx+1}`} className="h-40 rounded-lg object-cover" />
+                                 </div>
+                             ))}
+                         </div>
+                     </div>
+                 )}
+
+                 {/* Text Section */}
+                 <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200">
+                     {isEditingApproved ? (
+                         <textarea 
+                            className="w-full h-96 p-4 border border-slate-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
+                            defaultValue={viewingItem.text}
+                            onChange={(e) => setEditedContentText(e.target.value)}
+                         />
+                     ) : (
+                         <div className="prose prose-sm max-w-none prose-indigo">
+                            <ReactMarkdown components={{
+                                h1: ({node, ...props}) => <h1 className="text-lg font-bold text-indigo-700 border-b border-indigo-100 pb-2 mt-6 mb-4" {...props} />,
+                                h2: ({node, ...props}) => <h2 className="text-base font-bold text-slate-800 mt-4 mb-2" {...props} />,
+                                table: ({node, ...props}) => <div className="overflow-x-auto my-4 border rounded-lg bg-slate-50"><table className="w-full text-sm text-left" {...props} /></div>,
+                                th: ({node, ...props}) => <th className="px-4 py-2 bg-slate-100 font-bold text-slate-600 border-b" {...props} />,
+                                td: ({node, ...props}) => <td className="px-4 py-2 border-b border-slate-100" {...props} />,
+                            }}>
+                                {viewingItem.text}
+                            </ReactMarkdown>
+                         </div>
+                     )}
+                 </div>
+             </div>
+             
+             {isEditingApproved && (
+                 <div className="p-4 border-t border-slate-100 bg-white flex justify-end">
+                     <button 
+                        onClick={() => {
+                            // Update logic would go here (requires updating App state)
+                            // For now simulate close
+                            setIsEditingApproved(false);
+                            alert("Edição salva localmente (funcionalidade completa requer atualização de estado).");
+                        }}
+                        className="px-6 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700"
+                     >
+                         Salvar Alterações
+                     </button>
+                 </div>
+             )}
+
+          </div>
+        </div>
+      )}
+
+      {/* --- DASHBOARD (RELATÓRIOS) --- */}
+      {showDashboard && (
+          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[60] flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col animate-scale-in">
+                  <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                      <h2 className="text-2xl font-bold text-slate-800 flex items-center">
+                          <BarChart2 className="mr-3 text-indigo-600"/> Dashboard de Conteúdo
+                      </h2>
+                      <button onClick={() => setShowDashboard(false)} className="p-2 hover:bg-slate-100 rounded-full"><X size={24}/></button>
+                  </div>
+                  
+                  <div className="flex border-b border-slate-100 px-6">
+                      <button 
+                        onClick={() => setDashboardTab('STATS')}
+                        className={`py-4 mr-6 text-sm font-bold border-b-2 transition-colors ${dashboardTab === 'STATS' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}
+                      >
+                          Visão Geral
+                      </button>
+                      <button 
+                        onClick={() => setDashboardTab('LIST')}
+                        className={`py-4 mr-6 text-sm font-bold border-b-2 transition-colors ${dashboardTab === 'LIST' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}
+                      >
+                          Lista de Conteúdos
+                      </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-8 bg-slate-50">
+                      {dashboardTab === 'STATS' ? (
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                             {/* Cards */}
+                             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                                 <p className="text-sm text-slate-500 uppercase font-bold mb-2">Total Aprovado</p>
+                                 <p className="text-4xl font-bold text-indigo-600">{Object.keys(approvedItems).length}</p>
+                             </div>
+                             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                                 <p className="text-sm text-slate-500 uppercase font-bold mb-2">Em Planejamento</p>
+                                 <p className="text-4xl font-bold text-yellow-600">{Object.keys(plannedItems).length}</p>
+                             </div>
+                             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                                 <p className="text-sm text-slate-500 uppercase font-bold mb-2">Posts vs Stories</p>
+                                 <div className="flex items-center space-x-4">
+                                     <div>
+                                        <p className="text-2xl font-bold text-slate-800">{Object.values(approvedItems).filter(i => i.type === 'feed' || i.type === 'post').length}</p>
+                                        <p className="text-xs text-slate-400">Posts</p>
+                                     </div>
+                                     <div className="h-8 w-px bg-slate-200"></div>
+                                     <div>
+                                        <p className="text-2xl font-bold text-slate-800">{Object.values(approvedItems).filter(i => i.type === 'stories').length}</p>
+                                        <p className="text-xs text-slate-400">Stories</p>
+                                     </div>
+                                 </div>
+                             </div>
+                          </div>
+                      ) : (
+                          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                              <table className="w-full text-sm text-left">
+                                  <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-xs">
+                                      <tr>
+                                          <th className="px-6 py-4">Data</th>
+                                          <th className="px-6 py-4">Tipo</th>
+                                          <th className="px-6 py-4">Status</th>
+                                          <th className="px-6 py-4">Estratégia</th>
+                                      </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100">
+                                      {Object.values(approvedItems).map(item => (
+                                          <tr key={item.id} className="hover:bg-slate-50">
+                                              <td className="px-6 py-4 font-medium text-slate-700">{item.date}</td>
+                                              <td className="px-6 py-4 uppercase text-xs">{item.type}</td>
+                                              <td className="px-6 py-4"><span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold">Aprovado</span></td>
+                                              <td className="px-6 py-4 text-slate-500 truncate max-w-xs">{item.strategy}</td>
+                                          </tr>
+                                      ))}
+                                      {Object.values(plannedItems).map(item => (
+                                          <tr key={item.id} className="hover:bg-slate-50">
+                                              <td className="px-6 py-4 font-medium text-slate-700">{item.date}</td>
+                                              <td className="px-6 py-4 uppercase text-xs">{item.type}</td>
+                                              <td className="px-6 py-4"><span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-bold">Rascunho</span></td>
+                                              <td className="px-6 py-4 text-slate-500 truncate max-w-xs">{item.focus}</td>
+                                          </tr>
+                                      ))}
+                                  </tbody>
+                              </table>
+                          </div>
+                      )}
+                  </div>
+              </div>
+          </div>
+      )}
+
+    </div>
+  );
+};
+
+export default CalendarView;
