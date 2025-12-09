@@ -25,6 +25,7 @@ export interface CalendarContext {
   strategy: string;
   adjustments?: string;
   manualContent?: string; // Restored: User drafted content
+  selectedFormats?: string[]; // New: User selected specific formats
 }
 
 export interface PlannedContent {
@@ -35,7 +36,8 @@ export interface PlannedContent {
   selectedIngredients: string[]; // List of ingredient texts
   adjustments: string; // Custom user instructions for AI
   manualContent?: string; // Restored: User drafted content
-  carouselImages?: string[]; // New: Stores generated carousel slides
+  carouselImages?: string[]; // Stores generated carousel slides (visuals)
+  selectedFormats?: string[]; // New: Saved format selections
 }
 
 export interface ApprovedContent {
@@ -44,7 +46,7 @@ export interface ApprovedContent {
   type: ContentType;
   text: string;
   imageUrl?: string; // Main single image
-  carouselImages?: string[]; // New: Array of base64 images for carousel or collection of all images
+  carouselImages?: string[]; // Array of base64 images for carousel or collection of all images
   strategy: string;
   timestamp: number;
 }

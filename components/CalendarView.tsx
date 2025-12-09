@@ -1,12 +1,35 @@
-
-import React, { useState, useMemo, useEffect } from 'react';
-import { Video, Image, Trophy, Target, Sparkles, X, CheckCircle2, ChevronLeft, ChevronRight as ChevronRightIcon, Maximize2, Tag, Search, Copy, Save, Edit, FileText, PieChart, BarChart2, AlertCircle, BookOpen, Star, Trash2, Calendar as CalendarIcon, Filter, Download, Printer, ChevronDown, List, CheckSquare, PencilLine, FileSpreadsheet, Grid } from 'lucide-react';
-import { StrategyItem, CalendarContext, ApprovedContent, ContentType, PlannedContent } from '../types';
+import React, { useState, useRef } from 'react';
+import { 
+  ChevronLeft, 
+  ChevronRight, 
+  Calendar as CalendarIcon, 
+  Download, 
+  Printer, 
+  Filter, 
+  X, 
+  CheckCircle2, 
+  Trash2, 
+  Edit, 
+  FileText, 
+  Image as ImageIcon, 
+  MoreHorizontal,
+  Layers,
+  Video,
+  Radio,
+  Share2,
+  CheckSquare,
+  ChevronDown,
+  FileSpreadsheet,
+  Tag,
+  Sparkles,
+  Save
+} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { StrategyItem, CalendarContext, ApprovedContent, ContentType, PlannedContent } from '../types';
 
 interface CalendarViewProps {
   data: StrategyItem[];
-  selectedIds: string[]; // Received from App
+  selectedIds: string[];
   onGenerate: (context: CalendarContext) => void;
   onSavePlan: (plan: PlannedContent) => void;
   onDeletePlan: (id: string) => void;
@@ -25,760 +48,483 @@ const WEEKLY_SCHEDULE = [
   { day: 'Domingo', focus: 'MEME / LIFESTYLE', stories: 'INTERAÇÃO / MEME', post: 'FOTOS LIFESTYLE (Conexão).', live: null }
 ];
 
-const WARMUP_SCHEDULE = [
-  { day: 'Segunda', focus: 'TSUNAMI (OPORTUNIDADE)', stories: 'Revelando a nova oportunidade (Tsunami).', post: 'Carrossel: "O mercado mudou".', live: 'Live 01: O Tsunami da IA' },
-  { day: 'Terça', focus: 'CONSCIÊNCIA DA DOR', stories: 'Enquete sobre dores atuais.', post: 'Reels: Erros comuns.', live: null },
-  { day: 'Quarta', focus: 'CONSCIÊNCIA DO PRODUTO', stories: 'Bastidores da Solução.', post: 'Foto/Vídeo resultado (Prova).', live: 'Live 02: Aprofundando ("Ensina sem Ensinar")' },
-  { day: 'Quinta', focus: 'QUEBRA DE CRENÇA', stories: 'Caixinha: "Por que não começou?".', post: 'Mito vs. Verdade.', live: null },
-  { day: 'Sexta', focus: 'ANTECIPAÇÃO', stories: 'Contagem regressiva.', post: 'O que você vai perder.', live: 'Live 03: Tira-Dúvidas' },
-  { day: 'Sábado', focus: 'CONEXÃO / HISTÓRIA', stories: 'Minha história.', post: 'Foto pessoal inspiradora.', live: null },
-  { day: 'Domingo', focus: 'ULTIMATO', stories: 'Última chamada.', post: 'Banner oficial.', live: null }
+const CONTENT_FORMATS = [
+  { id: 'story_simple', label: 'Story (Único)', icon: <ImageIcon size={14}/> },
+  { id: 'story_seq', label: 'Seq. Stories', icon: <Layers size={14}/> },
+  { id: 'feed_static', label: 'Post (Imagem)', icon: <ImageIcon size={14}/> },
+  { id: 'feed_carousel', label: 'Carrossel', icon: <GalleryIcon size={14}/> },
+  { id: 'reels', label: 'Reels / Vídeo', icon: <Video size={14}/> },
+  { id: 'live', label: 'Live', icon: <Radio size={14}/> },
 ];
 
-const LAUNCH_SCHEDULE = [
-  { day: 'Segunda', focus: 'ABERTURA', stories: 'Atração - CTA para seguir.', post: 'Motivação + CTA EVENTO.', live: 'Live de Abertura' },
-  { day: 'Terça', focus: 'QUEBRA DE OBJEÇÃO', stories: 'Vídeo quebra objeção.', post: 'Depoimento aluno + CTA.', live: 'Entrevista aluno' },
-  { day: 'Quarta', focus: 'PROVA SOCIAL', stories: 'Depoimento aluno.', post: 'Conteúdo resolve dor + CTA.', live: 'Live Técnica (Demo)' },
-  { day: 'Quinta', focus: 'QUEBRA DE OBJEÇÃO', stories: 'Vídeo quebra objeção.', post: 'Carrossel quebra objeção.', live: 'Entrevista aluno' },
-  { day: 'Sexta', focus: 'PROVA SOCIAL', stories: 'Depoimento aluno.', post: 'Conteúdo resolve dor + CTA.', live: 'Live Encerramento' },
-  { day: 'Sábado', focus: 'ATRAÇÃO', stories: 'Atração - CTA seguir.', post: 'Meme/áudio alta + CTA.', live: null },
-  { day: 'Domingo', focus: 'VIRAL', stories: 'Meme/áudio alta.', post: 'Fotos Lifestyle.', live: null }
-];
+function GalleryIcon({size}: {size:number}) {
+    return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+            <circle cx="9" cy="9" r="2"/>
+            <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+        </svg>
+    )
+}
 
-const CalendarView: React.FC<CalendarViewProps> = ({ data, selectedIds, onGenerate, onSavePlan, onDeletePlan, onDeleteApproved, approvedItems, plannedItems }) => {
+type ViewFilterType = 'ALL' | 'APPROVED' | 'DRAFT' | 'STORIES' | 'POST' | 'LIVE';
+
+const CalendarView: React.FC<CalendarViewProps> = ({ 
+  data, 
+  selectedIds, 
+  onGenerate, 
+  onSavePlan, 
+  onDeletePlan,
+  onDeleteApproved,
+  approvedItems, 
+  plannedItems 
+}) => {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [activeSchedule, setActiveSchedule] = useState<'WEEKLY' | 'WARMUP' | 'LAUNCH'>('WEEKLY');
-  
-  // Modals
-  const [selectedCell, setSelectedCell] = useState<{date: string, dayInfo: any, type: ContentType} | null>(null);
-  const [viewingItem, setViewingItem] = useState<ApprovedContent | null>(null); // Read Mode
-  const [showDashboard, setShowDashboard] = useState(false); // Reports
-  const [dashboardTab, setDashboardTab] = useState<'STATS' | 'LIST'>('STATS'); // Report Tabs
-  
-  // Editing Mode State
-  const [isEditingApproved, setIsEditingApproved] = useState(false);
-  const [editedContentText, setEditedContentText] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [approvedModalOpen, setApprovedModalOpen] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState<{date: string, type: ContentType} | null>(null);
+  const [manualText, setManualText] = useState('');
+  const [selectedFormats, setSelectedFormats] = useState<string[]>([]);
+  const [viewFilter, setViewFilter] = useState<ViewFilterType>('ALL');
 
-  // Modal State
-  const [customAdjustment, setCustomAdjustment] = useState(''); // Just for AI Prompt
-  const [manualPlanText, setManualPlanText] = useState(''); // User's manual draft
-  const [activeTab, setActiveTab] = useState<'SELECTED' | 'ALL'>('SELECTED');
-  const [ingredientSearch, setIngredientSearch] = useState('');
-  const [modalSelectedIngredients, setModalSelectedIngredients] = useState<string[]>([]);
-
-  // Helpers
-  const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
-  const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
+  const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay(); // 0 = Sunday
+  
+  const monthName = currentDate.toLocaleString('pt-BR', { month: 'long' });
+  const year = currentDate.getFullYear();
 
   const handlePrevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
   const handleNextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
-  
-  const handlePrintCalendar = () => {
-     window.print();
+
+  // --- ACTIONS ---
+
+  const handleSlotClick = (date: number, type: ContentType) => {
+    const dateStr = `${year}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`;
+    const id = `${dateStr}-${type}`;
+
+    if (approvedItems[id]) {
+        setSelectedSlot({ date: dateStr, type });
+        setApprovedModalOpen(true);
+    } else {
+        const existingPlan = plannedItems[id];
+        setManualText(existingPlan?.manualContent || '');
+        setSelectedFormats(existingPlan?.selectedFormats || []);
+        setSelectedSlot({ date: dateStr, type });
+        setModalOpen(true);
+    }
   };
-  
-  // --- PDF PRINT FUNCTION ---
-  const handlePrintPDF = (item: ApprovedContent) => {
-      const printWindow = window.open('', '_blank');
-      if (!printWindow) {
-          alert("Permita pop-ups para imprimir o PDF.");
-          return;
-      }
+
+  const handleSaveDraft = () => {
+      if (!selectedSlot) return;
+      const id = `${selectedSlot.date}-${selectedSlot.type}`;
       
-      const contentHtml = item.text
-        .replace(/\n/g, '<br/>')
-        .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
-        .replace(/## (.*?)\n/g, '<h2>$1</h2>')
-        .replace(/### (.*?)\n/g, '<h3>$1</h3>');
+      // Look up schedule focus
+      const dayOfWeek = new Date(selectedSlot.date).getDay(); // 0=Sun, 1=Mon...
+      // Adjust because WEEKLY_SCHEDULE starts at Monday index 0, but Date.getDay() Sunday is 0.
+      const scheduleIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      const scheduleItem = WEEKLY_SCHEDULE[scheduleIndex];
+      const focus = scheduleItem?.focus || 'Geral';
 
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Conteúdo - ${item.date}</title>
-            <style>
-              body { font-family: 'Arial', sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }
-              h1 { color: #4338ca; border-bottom: 2px solid #e0e7ff; padding-bottom: 10px; }
-              h2 { color: #1e293b; margin-top: 20px; }
-              table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-              th, td { border: 1px solid #e2e8f0; padding: 12px; text-align: left; }
-              th { background-color: #f8fafc; font-weight: bold; }
-              .meta { font-size: 0.8rem; color: #64748b; margin-bottom: 30px; }
-              img { max-width: 100%; height: auto; border-radius: 8px; margin-top: 10px; border: 1px solid #eee; }
-              .gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 20px; }
-            </style>
-          </head>
-          <body>
-            <h1>Planejamento de Conteúdo - Roma</h1>
-            <div class="meta">
-              <p><strong>Data:</strong> ${item.date} | <strong>Tipo:</strong> ${item.type.toUpperCase()}</p>
-              <p><strong>Estratégia:</strong> ${item.strategy}</p>
-            </div>
-            ${item.imageUrl ? `<h3>Imagem Principal</h3><img src="${item.imageUrl}" alt="Imagem Gerada" /><br/>` : ''}
-            
-            ${item.carouselImages && item.carouselImages.length > 0 ? `
-               <h3>Galeria Visual Criada</h3>
-               <div class="gallery">
-                  ${item.carouselImages.map((img, i) => `<div style="text-align:center;"><img src="${img}" /><p style="font-size:10px;">Item ${i+1}</p></div>`).join('')}
-               </div>
-            ` : ''}
+      // Gather ingredients
+      const ingredients = data.filter(i => selectedIds.includes(i.id + '-pain') || selectedIds.includes(i.id + '-desire')).map(i => i.desire || i.pain);
 
-            <br/>
-            <div>${contentHtml}</div>
-            <script>window.onload = function() { window.print(); }</script>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
+      onSavePlan({
+          id,
+          date: selectedSlot.date,
+          type: selectedSlot.type,
+          focus,
+          selectedIngredients: ingredients,
+          adjustments: '',
+          manualContent: manualText,
+          selectedFormats
+      });
+      setModalOpen(false);
   };
 
-  // --- EXCEL EXPORT FUNCTION ---
-  const handleExportExcel = () => {
-      // Combines approved and planned items for export
-      const allItems = [
-          ...Object.values(approvedItems).map(i => ({...i, status: 'Aprovado'})),
-          ...Object.values(plannedItems).map(i => ({...i, status: 'Planejado', text: i.manualContent || '(Rascunho)'}))
-      ];
+  const handleSendToAI = () => {
+      if (!selectedSlot) return;
+      handleSaveDraft(); // Save first
+      
+      const dayOfWeekIdx = new Date(selectedSlot.date).getDay();
+      const scheduleIdx = dayOfWeekIdx === 0 ? 6 : dayOfWeekIdx - 1;
+      const schedule = WEEKLY_SCHEDULE[scheduleIdx];
 
-      if (allItems.length === 0) {
-          alert("Nenhum conteúdo para exportar.");
-          return;
+      // Build context string from ingredients
+      const ingredientsList = data
+        .filter(d => selectedIds.some(id => id.startsWith(d.id)))
+        .map(d => {
+            const parts = [];
+            if (selectedIds.includes(`${d.id}-pain`)) parts.push(`Dor: ${d.pain}`);
+            if (selectedIds.includes(`${d.id}-desire`)) parts.push(`Desejo: ${d.desire}`);
+            if (selectedIds.includes(`${d.id}-objection`)) parts.push(`Objeção: ${d.objection}`);
+            return parts.join(' | ');
+        })
+        .join('\n');
+
+      onGenerate({
+          date: selectedSlot.date,
+          dayOfWeek: schedule.day,
+          contentType: selectedSlot.type,
+          focus: schedule.focus,
+          strategy: ingredientsList,
+          manualContent: manualText,
+          selectedFormats
+      });
+      setModalOpen(false);
+  };
+
+  const handleDeleteCurrentPlan = () => {
+      if (selectedSlot) {
+          onDeletePlan(`${selectedSlot.date}-${selectedSlot.type}`);
+          setModalOpen(false);
       }
+  };
 
-      // CSV Header
-      let csvContent = "\uFEFFData;Tipo;Status;Estratégia;Conteúdo\n";
+  const handleDeleteCurrentApproved = () => {
+      if (selectedSlot && confirm('Tem certeza que deseja excluir este conteúdo aprovado? Esta ação não pode ser desfeita.')) {
+          onDeleteApproved(`${selectedSlot.date}-${selectedSlot.type}`);
+          setApprovedModalOpen(false);
+      }
+  };
 
-      allItems.forEach(item => {
-          const cleanText = (item.text || '').replace(/(\r\n|\n|\r|;)/gm, " "); // Remove breaks and semicolons
-          const strategy = (item as any).strategy || (item as any).focus || '-';
-          const type = item.type;
-          const date = item.date;
-          const status = (item as any).status;
+  const handleFormatToggle = (id: string) => {
+      setSelectedFormats(prev => prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]);
+  };
 
-          csvContent += `${date};${type};${status};${strategy};${cleanText}\n`;
+  const handleExportExcel = () => {
+      let csvContent = "\uFEFFData;Tipo;Status;Foco;Conteúdo\n"; // BOM for Excel
+      
+      const allDates = new Set([...Object.keys(approvedItems), ...Object.keys(plannedItems)]);
+      
+      allDates.forEach(key => {
+          const approved = approvedItems[key];
+          const planned = plannedItems[key];
+          
+          if (approved) {
+              const cleanText = approved.text.replace(/(\r\n|\n|\r)/gm, " ").replace(/;/g, ",");
+              csvContent += `${approved.date};${approved.type};APROVADO;${approved.strategy};"${cleanText.substring(0, 100)}..."\n`;
+          } else if (planned) {
+              csvContent += `${planned.date};${planned.type};PLANEJADO;${planned.focus};"${planned.manualContent || 'Rascunho'}"\n`;
+          }
       });
 
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.setAttribute("href", url);
-      link.setAttribute("download", `roma_planejamento_${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute("download", `planejamento_roma_${monthName}_${year}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
   };
 
-  // Render Cell Content
-  const renderCellContent = (dateKey: string, type: ContentType, label: string) => {
-    const fullId = `${dateKey}-${type}`;
-    const approvedItem = approvedItems[fullId];
-    const plannedItem = plannedItems[fullId];
+  const handlePrint = () => {
+      window.print();
+  };
 
-    if (approvedItem) {
-      return (
-        <div 
-          onClick={(e) => { e.stopPropagation(); setViewingItem(approvedItem); }}
-          className="mt-1 p-2 bg-green-50 border border-green-200 rounded-md cursor-pointer hover:bg-green-100 transition-colors group relative"
-        >
-          <div className="flex items-center justify-between mb-1">
-             <span className="text-[10px] font-bold uppercase text-slate-900 flex items-center">
-               <CheckCircle2 size={10} className="mr-1 text-green-600"/> {label}
-             </span>
-             {approvedItem.imageUrl && <Image size={10} className="text-green-600" />}
-             {approvedItem.carouselImages && <Grid size={10} className="text-green-600 ml-1" />}
-          </div>
-          <p className="text-[10px] text-green-800 line-clamp-2 leading-tight">
-             {approvedItem.text.substring(0, 60)}...
-          </p>
-        </div>
-      );
-    }
-    
-    if (plannedItem) {
-        return (
-            <div 
-              onClick={(e) => { 
-                  e.stopPropagation(); 
-                  const dayInfo = getScheduleForDay(new Date(dateKey).getDay());
-                  setSelectedCell({ date: dateKey, dayInfo, type }); 
-              }}
-              className="mt-1 p-2 bg-yellow-50 border border-yellow-200 rounded-md cursor-pointer hover:bg-yellow-100 transition-colors group"
-            >
-              <div className="flex items-center justify-between mb-1">
-                 <span className="text-[10px] font-bold uppercase text-slate-900 flex items-center">
-                   <PencilLine size={10} className="mr-1 text-yellow-600"/> {label}
-                 </span>
+  // --- RENDERING HELPERS ---
+
+  const renderCellContent = (day: number, type: ContentType, label: string) => {
+      // Filtering Logic
+      if (viewFilter === 'STORIES' && type !== 'stories') return null;
+      if (viewFilter === 'POST' && type !== 'post' && type !== 'feed') return null;
+      if (viewFilter === 'LIVE' && type !== 'live') return null;
+
+      const dateStr = `${year}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const id = `${dateStr}-${type}`;
+      
+      const approved = approvedItems[id];
+      const planned = plannedItems[id];
+
+      if (viewFilter === 'APPROVED' && !approved) return null;
+      if (viewFilter === 'DRAFT' && !planned) return null;
+
+      if (approved) {
+          return (
+              <div onClick={(e) => { e.stopPropagation(); handleSlotClick(day, type); }} className="mb-1 p-1.5 bg-green-50 border border-green-200 rounded cursor-pointer hover:bg-green-100 transition-colors group">
+                  <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-900 uppercase">{label}</span>
+                      <CheckCircle2 size={12} className="text-green-600" />
+                  </div>
+                  <p className="text-[9px] text-green-800 line-clamp-2 mt-0.5 leading-tight">
+                      {approved.strategy}
+                  </p>
               </div>
-              <p className="text-[10px] text-yellow-800 line-clamp-2 leading-tight italic">
-                 {plannedItem.manualContent || "Rascunho salvo"}
-              </p>
-            </div>
-        );
-    }
+          );
+      }
 
-    return (
-      <div 
-        onClick={(e) => {
-            e.stopPropagation();
-            const dayInfo = getScheduleForDay(new Date(dateKey).getDay());
-            setSelectedCell({ date: dateKey, dayInfo, type });
-        }}
-        className="mt-1 py-2 px-2 rounded-md border border-dashed border-slate-300 hover:border-indigo-300 hover:bg-indigo-50 cursor-pointer flex items-center justify-center transition-all group"
-      >
-        <div className="flex items-center text-[10px] font-bold uppercase text-slate-900">
-            <span className="group-hover:scale-110 transition-transform">+ {label}</span>
-        </div>
-      </div>
-    );
-  };
+      if (planned) {
+          return (
+              <div onClick={(e) => { e.stopPropagation(); handleSlotClick(day, type); }} className="mb-1 p-1.5 bg-yellow-50 border border-yellow-200 rounded cursor-pointer hover:bg-yellow-100 transition-colors group">
+                  <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-900 uppercase">{label}</span>
+                      <Edit size={12} className="text-yellow-600" />
+                  </div>
+                  <p className="text-[9px] text-yellow-800 line-clamp-2 mt-0.5 leading-tight">
+                      {planned.manualContent ? `📝 ${planned.manualContent}` : planned.focus}
+                  </p>
+              </div>
+          );
+      }
 
-  const getScheduleForDay = (dayIndex: number) => {
-    // 0 = Domingo, 1 = Segunda...
-    // Array start at Monday (0 in array), so we adjust
-    const adjustedIndex = dayIndex === 0 ? 6 : dayIndex - 1;
-    
-    let schedule = WEEKLY_SCHEDULE;
-    if (activeSchedule === 'WARMUP') schedule = WARMUP_SCHEDULE;
-    if (activeSchedule === 'LAUNCH') schedule = LAUNCH_SCHEDULE;
-    
-    return schedule[adjustedIndex];
-  };
+      // Empty Slot
+      // If we are filtering by Approved or Draft specifically, we hide empty slots to declutter
+      if (viewFilter === 'APPROVED' || viewFilter === 'DRAFT') return null;
 
-  // --- MAIN RENDER ---
-  const daysInMonth = getDaysInMonth(currentDate.getFullYear(), currentDate.getMonth());
-  const firstDayOfMonth = getFirstDayOfMonth(currentDate.getFullYear(), currentDate.getMonth());
-  const monthName = currentDate.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
-  const monthNameCapitalized = monthName.charAt(0).toUpperCase() + monthName.slice(1);
-
-  // Initialize Modal Data when opening
-  useEffect(() => {
-    if (selectedCell) {
-        const fullId = `${selectedCell.date}-${selectedCell.type}`;
-        const existingPlan = plannedItems[fullId];
-        
-        // Reset or Load
-        setManualPlanText(existingPlan?.manualContent || '');
-        setModalSelectedIngredients(existingPlan?.selectedIngredients || []);
-        setCustomAdjustment(existingPlan?.adjustments || '');
-        
-        // Pre-select relevant ingredients if new
-        if (!existingPlan && selectedIds.length > 0) {
-            setModalSelectedIngredients(selectedIds);
-        }
-    }
-  }, [selectedCell, plannedItems, selectedIds]);
-
-  const handleSaveDraft = () => {
-      if (!selectedCell) return;
-      
-      const fullId = `${selectedCell.date}-${selectedCell.type}`;
-      const plan: PlannedContent = {
-          id: fullId,
-          date: selectedCell.date,
-          type: selectedCell.type,
-          focus: selectedCell.dayInfo.focus,
-          selectedIngredients: modalSelectedIngredients,
-          adjustments: customAdjustment,
-          manualContent: manualPlanText
-      };
-      
-      onSavePlan(plan);
-      setSelectedCell(null); // Close modal
-  };
-
-  const handleSendToAI = () => {
-      if (!selectedCell) return;
-      
-      // Save draft first
-      handleSaveDraft();
-      
-      // Determine strategy text from ingredients
-      const strategyText = modalSelectedIngredients.length > 0
-        ? data.filter(d => modalSelectedIngredients.some(id => id.startsWith(d.id))).map(d => `${d.pain} -> ${d.desire}`).join('; ')
-        : "Utilize o foco do dia.";
-
-      // Send to AI
-      onGenerate({
-          date: selectedCell.date,
-          dayOfWeek: selectedCell.dayInfo.day,
-          contentType: selectedCell.type,
-          focus: selectedCell.dayInfo.focus,
-          strategy: strategyText,
-          adjustments: customAdjustment,
-          manualContent: manualPlanText // CRITICAL: Pass manual text
-      });
+      return (
+          <div onClick={(e) => { e.stopPropagation(); handleSlotClick(day, type); }} className="mb-1 p-1.5 border border-dashed border-slate-300 rounded hover:bg-indigo-50 hover:border-indigo-200 cursor-pointer transition-colors group flex items-center justify-between opacity-60 hover:opacity-100">
+              <span className="text-[10px] font-bold text-slate-900 uppercase">{label}</span>
+              <span className="text-indigo-400 opacity-0 group-hover:opacity-100 text-[10px]">+</span>
+          </div>
+      );
   };
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-6 animate-fade-in">
       
-      {/* Header Controls */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center bg-slate-100 rounded-lg p-1">
-             <button onClick={handlePrevMonth} className="p-2 hover:bg-white hover:shadow-sm rounded-md transition-all text-slate-600"><ChevronLeft size={20}/></button>
-             <span className="px-4 font-bold text-slate-800 min-w-[140px] text-center">{monthNameCapitalized}</span>
-             <button onClick={handleNextMonth} className="p-2 hover:bg-white hover:shadow-sm rounded-md transition-all text-slate-600"><ChevronRightIcon size={20}/></button>
-          </div>
-          
-          <div className="h-8 w-px bg-slate-200 mx-2 hidden md:block"></div>
-          
-          <div className="flex items-center space-x-2">
-            <span className="text-xs font-bold text-slate-500 uppercase">Modo:</span>
-            <select 
-              className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 font-medium outline-none"
-              value={activeSchedule}
-              onChange={(e) => setActiveSchedule(e.target.value as any)}
-            >
-              <option value="WEEKLY">Rotina Semanal (Padrão)</option>
-              <option value="WARMUP">Aquecimento (Pré-Lançamento)</option>
-              <option value="LAUNCH">Lançamento (Vendas)</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="flex space-x-2">
-           <button 
-             onClick={handleExportExcel}
-             className="flex items-center px-4 py-2 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg text-sm font-bold transition-colors border border-green-200"
-             title="Baixar Backup em Excel"
-           >
-             <FileSpreadsheet size={16} className="mr-2" />
-             Baixar Excel
-           </button>
-           <button 
-             onClick={handlePrintCalendar}
-             className="flex items-center px-4 py-2 bg-slate-50 text-slate-700 hover:bg-slate-100 rounded-lg text-sm font-bold transition-colors border border-slate-200"
-           >
-             <Printer size={16} className="mr-2" />
-             Salvar PDF / Imprimir
-           </button>
-           <button 
-             onClick={() => setShowDashboard(true)}
-             className="flex items-center px-4 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-sm font-bold transition-colors border border-indigo-200"
-           >
-             <BarChart2 size={16} className="mr-2" />
-             Relatórios
-           </button>
-        </div>
-      </div>
-
-      {/* Calendar Grid */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="grid grid-cols-7 bg-slate-50 border-b border-slate-200">
-          {['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'].map((day, i) => (
-            <div key={day} className={`py-3 text-center text-xs font-bold uppercase tracking-wider ${i === 0 || i === 6 ? 'text-slate-400 bg-slate-50/50' : 'text-slate-600'}`}>
-              {day}
-            </div>
-          ))}
-        </div>
-        
-        <div className="grid grid-cols-7 auto-rows-fr">
-          {/* Empty cells for previous month */}
-          {Array.from({ length: firstDayOfMonth }).map((_, i) => (
-            <div key={`empty-${i}`} className="min-h-[160px] bg-slate-50/30 border-b border-r border-slate-100"></div>
-          ))}
-
-          {/* Days */}
-          {Array.from({ length: daysInMonth }).map((_, i) => {
-            const day = i + 1;
-            const currentDayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
-            const dateKey = currentDayDate.toISOString().split('T')[0];
-            const dayOfWeek = currentDayDate.getDay();
-            const dayInfo = getScheduleForDay(dayOfWeek);
-            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-
-            return (
-              <div 
-                key={day} 
-                className={`min-h-[180px] border-b border-r border-slate-100 p-2 relative hover:bg-slate-50 transition-colors flex flex-col group ${isWeekend ? 'bg-slate-50/30' : 'bg-white'}`}
-              >
-                <div className="flex justify-between items-start mb-2">
-                  <span className={`text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full ${
-                    dateKey === new Date().toISOString().split('T')[0] 
-                      ? 'bg-indigo-600 text-white shadow-md' 
-                      : 'text-slate-700'
-                  }`}>
-                    {day}
-                  </span>
-                  <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
-                     {dayInfo.focus.split(' ')[0]}
-                  </span>
-                </div>
-
-                {/* Slots */}
-                <div className="flex-1 flex flex-col space-y-1">
-                    {/* STORIES SLOT */}
-                    {dayInfo.stories && renderCellContent(dateKey, 'stories', 'Stories')}
-                    
-                    {/* POST SLOT */}
-                    {dayInfo.post && renderCellContent(dateKey, 'post', 'Post')}
-                    
-                    {/* LIVE SLOT */}
-                    {dayInfo.live && renderCellContent(dateKey, 'live', 'Live')}
-                </div>
+      {/* HEADER CONTROLS */}
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2 bg-slate-100 p-1 rounded-lg">
+                  <button onClick={handlePrevMonth} className="p-1 hover:bg-white rounded shadow-sm transition-all"><ChevronLeft size={18}/></button>
+                  <span className="px-3 font-bold text-slate-700 capitalize min-w-[140px] text-center">{monthName} {year}</span>
+                  <button onClick={handleNextMonth} className="p-1 hover:bg-white rounded shadow-sm transition-all"><ChevronRight size={18}/></button>
               </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* --- MODAL: PLANEJAMENTO (WRITING & INGREDIENTS) --- */}
-      {selectedCell && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-scale-in">
-            
-            {/* Header */}
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 to-white rounded-t-2xl">
-              <div>
-                <h3 className="text-xl font-bold text-slate-800 flex items-center">
-                   <CalendarIcon className="mr-2 text-indigo-600" size={20}/> 
-                   Planejamento: {selectedCell.dayInfo.day} - {selectedCell.type === 'stories' ? 'Stories' : selectedCell.type === 'live' ? 'Live' : 'Post'}
-                </h3>
-                <p className="text-sm text-slate-500 mt-1">
-                   Foco do Dia: <span className="font-bold text-indigo-600">{selectedCell.dayInfo.focus}</span>
-                </p>
+              <div className="hidden md:flex items-center space-x-2 text-xs text-slate-500">
+                  <div className="flex items-center"><div className="w-2 h-2 bg-green-500 rounded-full mr-1"></div>Aprovado</div>
+                  <div className="flex items-center"><div className="w-2 h-2 bg-yellow-500 rounded-full mr-1"></div>Planejado</div>
               </div>
-              <button 
-                onClick={() => setSelectedCell(null)}
-                className="p-2 hover:bg-slate-200 rounded-full transition-colors"
-              >
-                <X size={24} className="text-slate-500" />
+          </div>
+
+          <div className="flex items-center gap-3">
+              {/* FILTER DROPDOWN */}
+              <div className="relative group">
+                  <div className="flex items-center space-x-2 bg-white border border-slate-200 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 cursor-pointer hover:border-indigo-300">
+                      <Filter size={16} />
+                      <span>Visualizar: {viewFilter === 'ALL' ? 'Todos' : viewFilter}</span>
+                      <ChevronDown size={14} />
+                  </div>
+                  <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-slate-200 shadow-xl rounded-lg z-20 hidden group-hover:block p-1">
+                      <button onClick={() => setViewFilter('ALL')} className={`w-full text-left px-3 py-2 text-xs rounded hover:bg-slate-50 ${viewFilter === 'ALL' ? 'font-bold text-indigo-600' : 'text-slate-600'}`}>Todos</button>
+                      <button onClick={() => setViewFilter('APPROVED')} className={`w-full text-left px-3 py-2 text-xs rounded hover:bg-slate-50 ${viewFilter === 'APPROVED' ? 'font-bold text-green-600' : 'text-slate-600'}`}>Apenas Aprovados</button>
+                      <button onClick={() => setViewFilter('DRAFT')} className={`w-full text-left px-3 py-2 text-xs rounded hover:bg-slate-50 ${viewFilter === 'DRAFT' ? 'font-bold text-yellow-600' : 'text-slate-600'}`}>Apenas Rascunhos</button>
+                      <div className="h-px bg-slate-100 my-1"></div>
+                      <button onClick={() => setViewFilter('STORIES')} className={`w-full text-left px-3 py-2 text-xs rounded hover:bg-slate-50 ${viewFilter === 'STORIES' ? 'font-bold text-indigo-600' : 'text-slate-600'}`}>Apenas Stories</button>
+                      <button onClick={() => setViewFilter('POST')} className={`w-full text-left px-3 py-2 text-xs rounded hover:bg-slate-50 ${viewFilter === 'POST' ? 'font-bold text-indigo-600' : 'text-slate-600'}`}>Apenas Posts</button>
+                      <button onClick={() => setViewFilter('LIVE')} className={`w-full text-left px-3 py-2 text-xs rounded hover:bg-slate-50 ${viewFilter === 'LIVE' ? 'font-bold text-indigo-600' : 'text-slate-600'}`}>Apenas Lives</button>
+                  </div>
+              </div>
+
+              <button onClick={handleExportExcel} className="flex items-center space-x-2 px-3 py-2 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg text-sm font-bold border border-green-200 transition-colors">
+                  <FileSpreadsheet size={16} /> <span className="hidden sm:inline">Baixar Excel</span>
               </button>
-            </div>
-
-            {/* Content Body */}
-            <div className="flex-1 overflow-y-auto p-6">
-                
-                {/* 1. MANUAL WRITING AREA (PRIORITY) */}
-                <div className="mb-8">
-                    <label className="flex items-center text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
-                        <PencilLine size={16} className="mr-2 text-indigo-500"/>
-                        Roteiro / Planejamento Manual
-                    </label>
-                    <textarea 
-                        className="w-full h-40 p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-none text-sm bg-slate-50"
-                        placeholder="Escreva aqui sua ideia, roteiro, tópicos ou lembretes para este conteúdo..."
-                        value={manualPlanText}
-                        onChange={(e) => setManualPlanText(e.target.value)}
-                    ></textarea>
-                    <p className="text-xs text-slate-400 mt-2 text-right">
-                       Você pode apenas salvar este rascunho ou usá-lo como base para a IA.
-                    </p>
-                </div>
-
-                {/* 2. INGREDIENTS SELECTION */}
-                <div className="mb-6">
-                     <div className="flex justify-between items-end mb-3">
-                         <label className="flex items-center text-sm font-bold text-slate-700 uppercase tracking-wide">
-                            <Target size={16} className="mr-2 text-indigo-500"/>
-                            Enriquecer com Estratégia (Opcional)
-                         </label>
-                         <button 
-                            onClick={() => setActiveTab(activeTab === 'ALL' ? 'SELECTED' : 'ALL')}
-                            className="text-xs text-indigo-600 hover:text-indigo-800 font-medium underline"
-                         >
-                            {activeTab === 'ALL' ? 'Ver Apenas Selecionados' : 'Ver Todas as Dores'}
-                         </button>
-                     </div>
-                     
-                     <div className="bg-white border border-slate-200 rounded-xl h-60 flex flex-col overflow-hidden">
-                         <div className="p-3 border-b border-slate-100 bg-slate-50">
-                             <div className="relative">
-                                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
-                                 <input 
-                                     type="text" 
-                                     placeholder="Buscar dor, desejo ou objeção..." 
-                                     className="w-full pl-9 pr-4 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500"
-                                     value={ingredientSearch}
-                                     onChange={(e) => setIngredientSearch(e.target.value)}
-                                 />
-                             </div>
-                         </div>
-                         <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                             {data
-                                .filter(d => activeTab === 'ALL' || selectedIds.some(sid => sid.startsWith(d.id)))
-                                .filter(d => 
-                                    !ingredientSearch || 
-                                    d.pain.toLowerCase().includes(ingredientSearch.toLowerCase()) || 
-                                    d.desire.toLowerCase().includes(ingredientSearch.toLowerCase())
-                                )
-                                .map(item => {
-                                 const itemKey = `${item.id}-pain`; // Simple key for logic
-                                 const isSelected = modalSelectedIngredients.includes(itemKey) || selectedIds.some(sid => sid.startsWith(item.id));
-                                 
-                                 return (
-                                     <div 
-                                        key={item.id} 
-                                        className={`p-3 rounded-lg border text-xs cursor-pointer transition-all flex items-start space-x-3 ${
-                                            isSelected ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-slate-100 hover:border-indigo-200'
-                                        }`}
-                                        onClick={() => {
-                                            if(modalSelectedIngredients.includes(itemKey)) {
-                                                setModalSelectedIngredients(prev => prev.filter(k => k !== itemKey));
-                                            } else {
-                                                setModalSelectedIngredients(prev => [...prev, itemKey]);
-                                            }
-                                        }}
-                                     >
-                                         <div className={`mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 bg-white'}`}>
-                                            {isSelected && <CheckCircle2 size={10} className="text-white"/>}
-                                         </div>
-                                         <div className="flex-1">
-                                             <p className="font-bold text-slate-700 mb-0.5">{item.category}</p>
-                                             <p className="text-slate-600">Dor: {item.pain}</p>
-                                             <p className="text-slate-500 italic mt-1">Desejo: {item.desire}</p>
-                                         </div>
-                                     </div>
-                                 );
-                             })}
-                             {data.length === 0 && <p className="p-4 text-center text-xs text-slate-400">Nenhum item encontrado.</p>}
-                         </div>
-                     </div>
-                </div>
-
-                {/* 3. EXTRA INSTRUCTIONS */}
-                <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Instruções Extras para a IA</label>
-                    <input 
-                        type="text" 
-                        className="w-full p-3 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:bg-white transition-colors outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="Ex: Use um tom de voz mais agressivo; Mencione a promoção X..."
-                        value={customAdjustment}
-                        onChange={(e) => setCustomAdjustment(e.target.value)}
-                    />
-                </div>
-
-            </div>
-
-            {/* Footer Actions */}
-            <div className="p-6 border-t border-slate-100 bg-slate-50 rounded-b-2xl flex items-center justify-between">
-                <button 
-                    onClick={handleSaveDraft}
-                    className="px-6 py-3 rounded-xl font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 hover:border-slate-300 transition-all flex items-center shadow-sm"
-                >
-                    <Save size={18} className="mr-2" />
-                    Salvar Rascunho
-                </button>
-                <button 
-                    onClick={handleSendToAI}
-                    className="px-8 py-3 rounded-xl font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:shadow-lg hover:shadow-indigo-500/30 transition-all transform hover:-translate-y-1 flex items-center"
-                >
-                    <Sparkles size={18} className="mr-2" />
-                    Gerar com IA
-                </button>
-            </div>
-
+              <button onClick={handlePrint} className="flex items-center space-x-2 px-3 py-2 bg-slate-50 text-slate-700 hover:bg-slate-100 rounded-lg text-sm font-bold border border-slate-200 transition-colors">
+                  <Printer size={16} /> <span className="hidden sm:inline">Salvar PDF / Imprimir</span>
+              </button>
           </div>
-        </div>
-      )}
+      </div>
 
-      {/* --- MODAL: VISUALIZAÇÃO DE APROVADO (READING) --- */}
-      {viewingItem && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-scale-in">
-             
-             {/* Header */}
-             <div className="p-6 border-b border-slate-100 flex justify-between items-start bg-gradient-to-r from-green-50 to-white rounded-t-2xl">
-                <div className="flex items-start space-x-4">
-                    <div className="p-3 bg-green-100 text-green-600 rounded-xl">
-                        <CheckCircle2 size={32} />
-                    </div>
-                    <div>
-                        <div className="flex items-center space-x-2 mb-1">
-                            <h3 className="text-xl font-bold text-slate-800">Conteúdo Aprovado</h3>
-                            <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-bold uppercase">Pronto</span>
-                        </div>
-                        <p className="text-sm text-slate-500 flex items-center">
-                            <CalendarIcon size={14} className="mr-1"/> {viewingItem.date} • {viewingItem.type.toUpperCase()}
-                        </p>
-                    </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                     <button 
-                        onClick={() => {
-                            if (window.confirm("Tem certeza que deseja excluir este conteúdo aprovado permanentemente?")) {
-                                onDeleteApproved(viewingItem.id);
-                                setViewingItem(null);
-                            }
-                        }}
-                        className="p-2 text-slate-400 hover:text-red-600 bg-white border border-slate-200 rounded-lg shadow-sm"
-                        title="Excluir Conteúdo"
-                     >
-                         <Trash2 size={20} />
-                     </button>
-                    <button onClick={() => setIsEditingApproved(!isEditingApproved)} className="p-2 text-slate-400 hover:text-indigo-600 bg-white border border-slate-200 rounded-lg shadow-sm" title="Editar Texto">
-                        <Edit size={20} />
-                    </button>
-                    <button onClick={() => handlePrintPDF(viewingItem)} className="p-2 text-slate-400 hover:text-indigo-600 bg-white border border-slate-200 rounded-lg shadow-sm" title="Imprimir PDF">
-                        <Printer size={20} />
-                    </button>
-                    <button onClick={() => setViewingItem(null)} className="p-2 text-slate-400 hover:text-slate-600">
-                        <X size={24} />
-                    </button>
-                </div>
-             </div>
-
-             {/* Content */}
-             <div className="flex-1 overflow-y-auto p-8 bg-slate-50">
-                 {/* Image Section */}
-                 {(viewingItem.imageUrl || (viewingItem.carouselImages && viewingItem.carouselImages.length > 0)) && (
-                     <div className="mb-8">
-                         <h4 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center">
-                            <Image size={14} className="mr-1"/> Galeria Visual
-                         </h4>
-                         <div className="flex flex-wrap gap-4">
-                             {/* Single Image */}
-                             {viewingItem.imageUrl && (
-                                <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
-                                    <p className="text-[10px] text-slate-400 mb-1 text-center font-bold">IMAGEM PRINCIPAL</p>
-                                    <img src={viewingItem.imageUrl} alt="Generated Content" className="h-40 rounded-lg object-cover" />
-                                </div>
-                             )}
-                             {/* Carousel Images */}
-                             {viewingItem.carouselImages && viewingItem.carouselImages.map((img, idx) => (
-                                 <div key={idx} className="bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
-                                     <p className="text-[10px] text-slate-400 mb-1 text-center font-bold">SLIDE {idx + 1}</p>
-                                     <img src={img} alt={`Slide ${idx+1}`} className="h-40 rounded-lg object-cover" />
-                                 </div>
-                             ))}
-                         </div>
-                     </div>
-                 )}
-
-                 {/* Text Section */}
-                 <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200">
-                     {isEditingApproved ? (
-                         <textarea 
-                            className="w-full h-96 p-4 border border-slate-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
-                            defaultValue={viewingItem.text}
-                            onChange={(e) => setEditedContentText(e.target.value)}
-                         />
-                     ) : (
-                         <div className="prose prose-sm max-w-none prose-indigo">
-                            <ReactMarkdown components={{
-                                h1: ({node, ...props}) => <h1 className="text-lg font-bold text-indigo-700 border-b border-indigo-100 pb-2 mt-6 mb-4" {...props} />,
-                                h2: ({node, ...props}) => <h2 className="text-base font-bold text-slate-800 mt-4 mb-2" {...props} />,
-                                table: ({node, ...props}) => <div className="overflow-x-auto my-4 border rounded-lg bg-slate-50"><table className="w-full text-sm text-left" {...props} /></div>,
-                                th: ({node, ...props}) => <th className="px-4 py-2 bg-slate-100 font-bold text-slate-600 border-b" {...props} />,
-                                td: ({node, ...props}) => <td className="px-4 py-2 border-b border-slate-100" {...props} />,
-                            }}>
-                                {viewingItem.text}
-                            </ReactMarkdown>
-                         </div>
-                     )}
-                 </div>
-             </div>
-             
-             {isEditingApproved && (
-                 <div className="p-4 border-t border-slate-100 bg-white flex justify-end">
-                     <button 
-                        onClick={() => {
-                            // Update logic would go here (requires updating App state)
-                            // For now simulate close
-                            setIsEditingApproved(false);
-                            alert("Edição salva localmente (funcionalidade completa requer atualização de estado).");
-                        }}
-                        className="px-6 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700"
-                     >
-                         Salvar Alterações
-                     </button>
-                 </div>
-             )}
-
+      {/* CALENDAR GRID */}
+      <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+          {/* Weekday Headers */}
+          <div className="grid grid-cols-7 border-b border-slate-200 bg-indigo-50">
+              {['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'].map((d) => (
+                  <div key={d} className="py-3 text-center text-[10px] font-bold text-indigo-900 uppercase tracking-wider">
+                      {d}
+                  </div>
+              ))}
           </div>
-        </div>
-      )}
 
-      {/* --- DASHBOARD (RELATÓRIOS) --- */}
-      {showDashboard && (
-          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[60] flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col animate-scale-in">
-                  <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-                      <h2 className="text-2xl font-bold text-slate-800 flex items-center">
-                          <BarChart2 className="mr-3 text-indigo-600"/> Dashboard de Conteúdo
-                      </h2>
-                      <button onClick={() => setShowDashboard(false)} className="p-2 hover:bg-slate-100 rounded-full"><X size={24}/></button>
+          <div className="grid grid-cols-7 auto-rows-fr bg-slate-200 gap-px border-b border-slate-200">
+              {/* Empty slots for previous month */}
+              {Array.from({ length: firstDayOfMonth }).map((_, i) => (
+                  <div key={`empty-${i}`} className="bg-white min-h-[140px] p-2 opacity-50"></div>
+              ))}
+
+              {/* Days */}
+              {Array.from({ length: daysInMonth }).map((_, i) => {
+                  const day = i + 1;
+                  const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+                  const dayOfWeek = date.getDay(); // 0 = Sun
+                  // Map Sunday=0 to Index 6, Mon=1 to Index 0
+                  const scheduleIdx = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+                  const schedule = WEEKLY_SCHEDULE[scheduleIdx];
+
+                  const focusColor = schedule.focus.includes('ATRAÇÃO') ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                                     schedule.focus.includes('ENGAJAMENTO') ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                                     'bg-slate-100 text-slate-700 border-slate-200';
+
+                  return (
+                      <div key={day} className="bg-white min-h-[160px] p-2 hover:bg-slate-50 transition-colors flex flex-col group relative">
+                          <div className="flex justify-between items-start mb-2">
+                              <span className={`text-sm font-bold ${dayOfWeek === 0 || dayOfWeek === 6 ? 'text-red-500' : 'text-slate-700'}`}>{day}</span>
+                              <span className={`text-[8px] px-1.5 py-0.5 rounded border font-bold uppercase truncate max-w-[80px] ${focusColor}`}>
+                                  {schedule.focus.split(' ')[0]}
+                              </span>
+                          </div>
+                          
+                          <div className="flex-1 space-y-1">
+                              {renderCellContent(day, 'stories', 'Stories')}
+                              {renderCellContent(day, 'post', 'Post')}
+                              {renderCellContent(day, 'live', 'Live')}
+                          </div>
+                      </div>
+                  );
+              })}
+          </div>
+      </div>
+
+      {/* --- PLANNING MODAL --- */}
+      {modalOpen && selectedSlot && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                  <div className="bg-indigo-600 p-4 flex justify-between items-center text-white">
+                      <div className="flex items-center space-x-2">
+                         <CalendarIcon size={20} />
+                         <h3 className="font-bold text-lg">Planejar Conteúdo</h3>
+                      </div>
+                      <button onClick={() => setModalOpen(false)} className="hover:bg-indigo-500 p-1 rounded transition-colors"><X size={20}/></button>
                   </div>
                   
-                  <div className="flex border-b border-slate-100 px-6">
-                      <button 
-                        onClick={() => setDashboardTab('STATS')}
-                        className={`py-4 mr-6 text-sm font-bold border-b-2 transition-colors ${dashboardTab === 'STATS' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}
-                      >
-                          Visão Geral
-                      </button>
-                      <button 
-                        onClick={() => setDashboardTab('LIST')}
-                        className={`py-4 mr-6 text-sm font-bold border-b-2 transition-colors ${dashboardTab === 'LIST' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}
-                      >
-                          Lista de Conteúdos
-                      </button>
+                  <div className="p-6 overflow-y-auto">
+                      <div className="flex items-center space-x-4 mb-6 text-sm">
+                          <div className="bg-slate-100 px-3 py-1 rounded-full font-bold text-slate-600 flex items-center">
+                              <CalendarIcon size={14} className="mr-2"/> {selectedSlot.date.split('-').reverse().join('/')}
+                          </div>
+                          <div className="bg-slate-100 px-3 py-1 rounded-full font-bold text-indigo-600 uppercase flex items-center">
+                              <Tag size={14} className="mr-2"/> {selectedSlot.type}
+                          </div>
+                      </div>
+
+                      {/* FORMAT SELECTOR */}
+                      <div className="mb-6">
+                          <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-3">Formatos de Conteúdo (Multi-escolha)</label>
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                              {CONTENT_FORMATS.map(fmt => {
+                                  const isSelected = selectedFormats.includes(fmt.id);
+                                  return (
+                                      <button 
+                                        key={fmt.id}
+                                        onClick={() => handleFormatToggle(fmt.id)}
+                                        className={`flex items-center space-x-2 px-3 py-2 rounded-lg border text-xs font-bold transition-all ${
+                                            isSelected 
+                                            ? 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-sm' 
+                                            : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'
+                                        }`}
+                                      >
+                                          <div className={isSelected ? 'text-indigo-600' : 'text-slate-400'}>{fmt.icon}</div>
+                                          <span>{fmt.label}</span>
+                                          {isSelected && <CheckCircle2 size={12} className="ml-auto text-indigo-600"/>}
+                                      </button>
+                                  )
+                              })}
+                          </div>
+                      </div>
+
+                      <div className="mb-6">
+                          <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">Roteiro / Planejamento Manual</label>
+                          <textarea 
+                              className="w-full h-32 p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 placeholder:text-slate-400"
+                              placeholder="Escreva sua ideia, roteiro ou briefing aqui..."
+                              value={manualText}
+                              onChange={(e) => setManualText(e.target.value)}
+                          />
+                          <p className="text-xs text-slate-400 mt-1">Se preenchido, a IA usará este texto como base principal.</p>
+                      </div>
+
+                      <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-100 mb-6">
+                          <h4 className="text-sm font-bold text-yellow-800 mb-1 flex items-center"><Sparkles size={14} className="mr-1"/> Estratégia Ativa</h4>
+                          <p className="text-xs text-yellow-700">
+                             {selectedIds.length} ingredientes selecionados na aba Organizar serão incluídos no prompt para a IA.
+                          </p>
+                      </div>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto p-8 bg-slate-50">
-                      {dashboardTab === 'STATS' ? (
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                             {/* Cards */}
-                             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-                                 <p className="text-sm text-slate-500 uppercase font-bold mb-2">Total Aprovado</p>
-                                 <p className="text-4xl font-bold text-indigo-600">{Object.keys(approvedItems).length}</p>
-                             </div>
-                             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-                                 <p className="text-sm text-slate-500 uppercase font-bold mb-2">Em Planejamento</p>
-                                 <p className="text-4xl font-bold text-yellow-600">{Object.keys(plannedItems).length}</p>
-                             </div>
-                             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-                                 <p className="text-sm text-slate-500 uppercase font-bold mb-2">Posts vs Stories</p>
-                                 <div className="flex items-center space-x-4">
-                                     <div>
-                                        <p className="text-2xl font-bold text-slate-800">{Object.values(approvedItems).filter(i => i.type === 'feed' || i.type === 'post').length}</p>
-                                        <p className="text-xs text-slate-400">Posts</p>
-                                     </div>
-                                     <div className="h-8 w-px bg-slate-200"></div>
-                                     <div>
-                                        <p className="text-2xl font-bold text-slate-800">{Object.values(approvedItems).filter(i => i.type === 'stories').length}</p>
-                                        <p className="text-xs text-slate-400">Stories</p>
-                                     </div>
-                                 </div>
-                             </div>
+                  <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-between items-center">
+                      <button onClick={handleDeleteCurrentPlan} className="text-red-500 hover:text-red-700 text-sm font-bold flex items-center px-3 py-2">
+                          <Trash2 size={16} className="mr-1"/> Excluir
+                      </button>
+                      <div className="flex space-x-3">
+                          <button onClick={handleSaveDraft} className="px-4 py-2 bg-white border border-slate-300 text-slate-700 font-bold rounded-lg hover:bg-slate-50 transition-colors flex items-center">
+                              <Save size={16} className="mr-2"/> Salvar Rascunho
+                          </button>
+                          <button onClick={handleSendToAI} className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-lg hover:shadow-indigo-500/30 transition-all flex items-center">
+                              <Sparkles size={16} className="mr-2"/> Gerar com IA
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* --- APPROVED CONTENT MODAL --- */}
+      {approvedModalOpen && selectedSlot && approvedItems[`${selectedSlot.date}-${selectedSlot.type}`] && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
+                  <div className="bg-green-600 p-4 flex justify-between items-center text-white">
+                      <div className="flex items-center space-x-2">
+                         <CheckCircle2 size={20} />
+                         <h3 className="font-bold text-lg">Conteúdo Aprovado</h3>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                          <button onClick={handleDeleteCurrentApproved} className="p-1.5 bg-green-700 hover:bg-green-800 rounded text-white mr-2" title="Excluir Conteúdo">
+                              <Trash2 size={18}/>
+                          </button>
+                          <button onClick={() => setApprovedModalOpen(false)} className="hover:bg-green-500 p-1 rounded transition-colors"><X size={20}/></button>
+                      </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-8">
+                        <div className="flex items-center space-x-4 mb-6 text-sm">
+                          <div className="bg-slate-100 px-3 py-1 rounded-full font-bold text-slate-600 flex items-center">
+                              <CalendarIcon size={14} className="mr-2"/> {selectedSlot.date.split('-').reverse().join('/')}
                           </div>
-                      ) : (
-                          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                              <table className="w-full text-sm text-left">
-                                  <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-xs">
-                                      <tr>
-                                          <th className="px-6 py-4">Data</th>
-                                          <th className="px-6 py-4">Tipo</th>
-                                          <th className="px-6 py-4">Status</th>
-                                          <th className="px-6 py-4">Estratégia</th>
-                                      </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-slate-100">
-                                      {Object.values(approvedItems).map(item => (
-                                          <tr key={item.id} className="hover:bg-slate-50">
-                                              <td className="px-6 py-4 font-medium text-slate-700">{item.date}</td>
-                                              <td className="px-6 py-4 uppercase text-xs">{item.type}</td>
-                                              <td className="px-6 py-4"><span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold">Aprovado</span></td>
-                                              <td className="px-6 py-4 text-slate-500 truncate max-w-xs">{item.strategy}</td>
-                                          </tr>
-                                      ))}
-                                      {Object.values(plannedItems).map(item => (
-                                          <tr key={item.id} className="hover:bg-slate-50">
-                                              <td className="px-6 py-4 font-medium text-slate-700">{item.date}</td>
-                                              <td className="px-6 py-4 uppercase text-xs">{item.type}</td>
-                                              <td className="px-6 py-4"><span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-bold">Rascunho</span></td>
-                                              <td className="px-6 py-4 text-slate-500 truncate max-w-xs">{item.focus}</td>
-                                          </tr>
-                                      ))}
-                                  </tbody>
-                              </table>
+                          <div className="bg-slate-100 px-3 py-1 rounded-full font-bold text-green-600 uppercase flex items-center">
+                              <Tag size={14} className="mr-2"/> {selectedSlot.type}
+                          </div>
+                      </div>
+
+                      <div className="prose prose-sm max-w-none text-slate-800">
+                          <ReactMarkdown>{approvedItems[`${selectedSlot.date}-${selectedSlot.type}`].text}</ReactMarkdown>
+                      </div>
+
+                      {/* CAROUSEL / IMAGE GALLERY */}
+                      {approvedItems[`${selectedSlot.date}-${selectedSlot.type}`].carouselImages && approvedItems[`${selectedSlot.date}-${selectedSlot.type}`].carouselImages!.length > 0 && (
+                          <div className="mt-8 border-t border-slate-200 pt-6">
+                              <h4 className="text-sm font-bold text-slate-900 uppercase mb-4 flex items-center">
+                                  <ImageIcon size={16} className="mr-2 text-indigo-600"/> Galeria Visual Criada
+                              </h4>
+                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                  {approvedItems[`${selectedSlot.date}-${selectedSlot.type}`].carouselImages!.map((img, idx) => (
+                                      <div key={idx} className="relative group bg-slate-100 rounded-lg overflow-hidden border border-slate-200 aspect-square md:aspect-[9/16]">
+                                          <img src={img} className="w-full h-full object-cover" alt={`Slide ${idx + 1}`} />
+                                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center">
+                                              <a 
+                                                href={img} 
+                                                download={`roma-visual-${selectedSlot.date}-${idx+1}.png`}
+                                                className="opacity-0 group-hover:opacity-100 p-2 bg-white rounded-full shadow-lg text-slate-800 hover:scale-110 transition-all"
+                                              >
+                                                  <Download size={16} />
+                                              </a>
+                                          </div>
+                                          <span className="absolute bottom-1 right-1 bg-black/50 text-white text-[10px] px-1.5 rounded font-bold">
+                                              {idx + 1}
+                                          </span>
+                                      </div>
+                                  ))}
+                              </div>
                           </div>
                       )}
                   </div>
+
+                  <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+                      <button onClick={() => setApprovedModalOpen(false)} className="px-6 py-2 bg-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-300 transition-colors">
+                          Fechar
+                      </button>
+                  </div>
               </div>
           </div>
       )}
-
     </div>
   );
 };
