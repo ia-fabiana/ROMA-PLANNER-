@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { StrategyItem, ContentType, HistoryItem, CalendarContext, ApprovedContent } from '../types';
 import { GoogleGenAI } from '@google/genai';
 import ReactMarkdown from 'react-markdown';
-import { Sparkles, Copy, RefreshCw, X, Calendar, CheckCircle2, Image as ImageIcon, Video, Mic, ExternalLink, Wand2, Grid, Clapperboard, MonitorPlay, Layers, Edit2, Download, ChevronRight, Camera, Upload, Trash2, Info, Save } from 'lucide-react';
+import { Sparkles, Copy, RefreshCw, X, Calendar, CheckCircle2, Image as ImageIcon, Video, Mic, ExternalLink, Wand2, Grid, Clapperboard, MonitorPlay, Layers, Edit2, Download, ChevronRight, Camera, Upload, Trash2, Info, Save, Terminal, FileText } from 'lucide-react';
 
 interface GeminiAdvisorProps {
   data: StrategyItem[];
@@ -14,7 +14,7 @@ interface GeminiAdvisorProps {
 }
 
 // Helper to identify section types based on headers
-type SectionType = 'VIDEO' | 'STORIES' | 'FEED' | 'CAROUSEL' | 'AVATAR' | 'AUDIO' | 'IMAGE_PROMPT' | 'OTHER';
+type SectionType = 'VIDEO' | 'STORIES' | 'FEED' | 'CAROUSEL' | 'AVATAR' | 'AUDIO' | 'IMAGE_PROMPT' | 'PROMPT' | 'OTHER';
 
 interface ParsedSection {
     id: string;
@@ -42,6 +42,31 @@ const parseBase64 = (dataUrl: string) => {
         console.error("Base64 Parse Error", e);
     }
     return null;
+}
+
+// NEW: Helper to extract specific content for a story step
+const extractStoryContent = (fullText: string, index: number): string => {
+    // Regex matches "Story 1:", "1.", "Cena 1" followed by text until the next number or end
+    const patterns = [
+        new RegExp(`(?:Story|Stories|Cena|Slide|Quadrinho)\\s*0?${index}\\s*[:.-]([^]*?)(?=(?:Story|Stories|Cena|Slide|Quadrinho)\\s*0?${index+1}|$)`, 'i'),
+        new RegExp(`^\\s*${index}\\.\\s*([^]*?)(?=\\n\\s*${index+1}\\.|$)`, 'm')
+    ];
+    
+    for (const regex of patterns) {
+        const match = fullText.match(regex);
+        if (match && match[1]) {
+            let clean = match[1].trim();
+            // Remove common visual cues from text if they are explicitly labeled, to avoid clutter
+            clean = clean.replace(/^\(Visual:.*?\)/i, '').trim();
+            return clean;
+        }
+    }
+    
+    // Fallback: If structure is lost, try to grab paragraph by index
+    const paragraphs = fullText.split(/\n\n+/).filter(p => p.trim().length > 10);
+    if (paragraphs[index-1]) return paragraphs[index-1];
+    
+    return fullText.substring(0, 150); // Ultimate fallback
 }
 
 const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({ 
@@ -83,46 +108,76 @@ const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({
           ? calendarContext.selectedFormats.join(', ') 
           : 'Nenhum formato específico selecionado (Gere Kit Padrão)';
       
-      let basePrompt = `Atue como um estrategista de conteúdo sênior especialista em Marketing para Estética e Beleza (Método Roma).
-IDIOMA OBRIGATÓRIO: TODO O CONTEÚDO GERADO DEVE SER ESTRITAMENTE EM PORTUGUÊS DO BRASIL (PT-BR).
-Não utilize inglês ou português de Portugal. Use linguagem natural, moderna e persuasiva adequada ao público brasileiro.
+      let basePrompt = `Atue como um ROTEIRISTA SÊNIOR e DIRETOR DE ARTE especialista em Marketing para Estética (Método Roma).
+IDIOMA OBRIGATÓRIO: PORTUGUÊS DO BRASIL (PT-BR).
 
-Eu preciso de um KIT DE CONTEÚDO COMPLETO E RICO para o dia, abrangendo vários formatos para garantir presença digital 360º.
+PERSONA DA EXPERT (QUEM FALA):
+- Nome: Fabiana (@ia.fabiana).
+- Perfil: Especialista em IA para profissionais da beleza.
+- Tom de voz: Didático, inovador, acolhedor e direto.
+- FORMATO DE VÍDEO: O conteúdo será gravado utilizando um AVATAR DIGITAL (HeyGen) da Fabiana.
 
-CONTEXTO DO CLIENTE:
-- Foco Estratégico do Dia: ${calendarContext.focus}
-- Ingredientes / Ideias Base: ${ingredientsText}
-- FORMATOS DE FOCO / PREFERÊNCIA DO USUÁRIO: ${formatsText} (Dê atenção especial a estes itens se mencionados).
-${calendarContext.manualContent ? `- RASCUNHO / IDEIA DO USUÁRIO (Prioridade Total): "${calendarContext.manualContent}"` : ''}
+CONTEXTO DO CLIENTE (ALUNO/SEGMENTO):
+- Foco: ${calendarContext.focus}
+- Ingredientes Estratégicos: ${ingredientsText}
+- FORMATOS DESEJADOS: ${formatsText}
+${calendarContext.manualContent ? `- RASCUNHO/IDEIA INICIAL: "${calendarContext.manualContent}"` : ''}
 ${calendarContext.adjustments ? `- Instruções Extras: ${calendarContext.adjustments}` : ''}
 
-IMPORTANTE: Se houver um rascunho do usuário, melhore-o, corrija-o e expanda-o para os formatos abaixo. Se não houver, crie do zero com base no Foco Estratégico.
+IMPORTANTE: Crie um KIT VISUAL seguindo ESTRITAMENTE a estrutura abaixo.
 
-GERE O CONTEÚDO NO SEGUINTE FORMATO MARKDOWN (MANTENHA OS TÍTULOS EXATOS):
+# 🎥 1. ROTEIRO DE VÍDEO (REELS COM AVATAR FABIANA @ia.fabiana)
+Crie um roteiro vertical 9:16 otimizado para o HeyGen.
+Siga rigorosamente os 8 PASSOS DO SCRIPT DE ALTA CONVERSÃO:
+1. HEADLINE (P.E.C)
+2. ROMA (Promessa)
+3. CTA (Seguir @ia.fabiana)
+4. JEITO ERRADO (O erro comum)
+5. CONSEQUÊNCIA (O problema gerado)
+6. JEITO CERTO (A Solução/Técnica correta)
+7. BENEFÍCIO (O ganho imediato)
+8. CTA (Salvar)
 
-# 🎥 1. ROTEIRO DE VÍDEO
-Crie uma tabela detalhada com duas colunas: ÁUDIO e VISUAL. (Português BR)
+ESTRUTURA DA TABELA DE ROTEIRO:
+| Passo | Visual / Cena (Instrução HeyGen) | Fala da Fabiana (Script) |
+|---|---|---|
+| 1. HEADLINE | Avatar Fabiana (Close-up) com expressão de alerta | "..." |
+| ... | ... | ... |
 
-# 📱 2. SEQUÊNCIA DE STORIES
-Roteiro para 5 a 7 stories conectados (Storytelling). (Português BR)
+*DICA VISUAL:* Alterne entre "Avatar Fabiana Falando" e "B-Roll/Demonstração Visual" (imagens ilustrativas cobrindo a tela enquanto ela narra) para tornar o vídeo dinâmico.
 
-# 📝 3. LEGENDA PARA FEED
-Focada em conversão e conexão (Técnica AIDA). (Português BR)
+# 📱 2. SEQUÊNCIA DE STORIES (ESTILO HQ REALISTA / STORYBOOK)
+Crie uma narrativa visual sequencial de 5 cenas estilo QUADRINHOS REALISTAS.
+Mantenha a persona da Fabiana ensinando ou demonstrando algo.
+Story 1: [Descrição Visual] | 🗣️ Fala: "..." | 💭 Pensamento: "..."
+Story 2: [Descrição Visual] | 🗣️ Fala: "..." | 💭 Pensamento: "..."
+... (até Story 5)
 
-# #️⃣ 4. HASHTAGS ESTRATÉGICAS
-Mix de hashtags em português.
+# 📝 3. LEGENDA PARA FEED (FOCADA NA SOLUÇÃO)
+Escreva uma legenda completa e persuasiva.
+ESTRUTURA OBRIGATÓRIA:
+1. Headline (Gancho P.E.C).
+2. O Problema (Jeito Errado): Descreva a dor do seguidor.
+3. A Virada (Jeito Certo): Explique a técnica/solução que a Fabiana ensina.
+4. CTA DE ALTO VALOR: Convide o seguidor a comentar uma palavra-chave para receber o "PROMPT DE OURO" (Seção 6 abaixo) no direct.
+5. 15 Hashtags estratégicas.
 
-# 🎠 5. ESTRUTURA DE CARROSSEL
-Descreva EXATAMENTE 5 slides (1 Capa + 3 Conteúdo + 1 CTA). Use o formato: "Slide 1: Texto".
+# 🎠 4. ESTRUTURA DE CARROSSEL (EDUCAÇÃO)
+5 Slides educativos ensinando o "Jeito Certo".
+Slide 1: Capa (Headline P.E.C)
+Slide 2: O Erro Comum
+Slide 3: A Consequência
+Slide 4: O Jeito Certo (A Técnica)
+Slide 5: Resumo/CTA
 
-# 🤖 6. SCRIPT PARA AVATAR
-Texto corrido e natural para ser falado por um avatar. (Português BR)
+# 🖼️ 5. PROMPT PARA IMAGEM (CAPA)
+Descrição visual detalhada para capa do Reels ou Post, featuring uma estética tecnológica e clean (estilo IA).
 
-# 🎙️ 7. BASE PARA NOTEBOOKLM
-Resumo denso do conteúdo para gerar áudio/podcast. (Português BR)
-
-# 🖼️ 8. PROMPT PARA IMAGEM
-Descrição visual detalhada (em Português) que servirá de base para as gerações de imagem.
+# 🤖 6. PROMPT DE OURO (A FERRAMENTA DA SOLUÇÃO)
+Crie um PROMPT DE COMANDO (Prompt de IA) pronto para ser copiado e colado.
+OBJETIVO: Este é o "Jeito Certo" materializado. É o prompt que a Fabiana vai entregar para a aluna usar no ChatGPT/Gemini para resolver a dor abordada no tema.
+ESTRUTURA DO PROMPT A SER GERADO:
+"Aja como um especialista em [Area]. Meu objetivo é [Resultado]. Crie [Formato] seguindo [Critérios]. O contexto é..."
 `;
       setPrompt(basePrompt);
       setGenType('TEXT');
@@ -147,10 +202,11 @@ Descrição visual detalhada (em Português) que servirá de base para as geraç
           if (t.includes('ROTEIRO DE VÍDEO') || t.includes('VIDEO')) type = 'VIDEO';
           else if (t.includes('SEQUÊNCIA DE STORIES') || t.includes('STORIES')) type = 'STORIES';
           else if (t.includes('LEGENDA') || t.includes('FEED')) type = 'FEED';
-          else if (t.includes('CARROSSEL')) type = 'CAROUSEL';
+          else if (t.includes('CARROSSEL') || t.includes('CAROUSEL')) type = 'CAROUSEL';
           else if (t.includes('AVATAR')) type = 'AVATAR';
           else if (t.includes('NOTEBOOKLM')) type = 'AUDIO';
           else if (t.includes('PROMPT PARA IMAGEM')) type = 'IMAGE_PROMPT';
+          else if (t.includes('PROMPT DE OURO') || t.includes('PROMPT DE COMANDO')) type = 'PROMPT';
 
           return {
               id: `sec_${index}`,
@@ -195,8 +251,6 @@ Descrição visual detalhada (em Português) que servirá de base para as geraç
                         data: parsed.data
                     }
                 });
-              } else {
-                  console.warn("Invalid global reference image skipped");
               }
           }
 
@@ -231,18 +285,34 @@ Descrição visual detalhada (em Português) que servirá de base para as geraç
   };
 
   // --- IMAGE SLOT GENERATION ---
-  const handleGenerateSlotImage = async (slotKey: string, context: string) => {
+  const handleGenerateSlotImage = async (slotKey: string, context: string, ratioClass: string) => {
       setIsGeneratingImg(prev => ({ ...prev, [slotKey]: true }));
       setEditingSlot(null);
 
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           
+          // Determine format details based on ratio
+          const isStory = ratioClass.includes('9/16');
+          const formatPrompt = isStory ? "FORMATO: Vertical (9:16) Storybook." : "FORMATO: Quadrado (1:1) Feed.";
+          
+          // Consistency instruction - Now emphasizes Realistic HQ Style
+          const consistencyPrompt = isStory 
+            ? "IMPORTANTE: MANTENHA A CONSISTÊNCIA VISUAL DOS PERSONAGENS (Mesmo rosto, roupas e iluminação da cena anterior). Crie uma narrativa visual contínua." 
+            : "";
+
           // Use adjusted prompt if available, otherwise default context
           const specificPrompt = adjustedPrompts[slotKey] || `
-            Crie uma imagem profissional, realista e estética para um salão de beleza.
-            Contexto: ${context.substring(0, 300)}.
-            Estilo: Fotografia de alta qualidade, iluminação suave, cores modernas, sem texto escrito na imagem.
+            Gere uma IMAGEM FOTOGRÁFICA REALISTA (Estilo Editorial/Cinematográfico).
+            ${formatPrompt}
+            CENA PARA RETRATAR: ${context.substring(0, 500)}
+            
+            DIRETRIZES DE ESTILO:
+            - Fotografia de alta resolução (8k), textura de pele natural.
+            - Iluminação de estúdio suave e profissional.
+            - NÃO inclua texto ou balões na imagem (isso será adicionado na edição).
+            - Foco na expressão facial e linguagem corporal descrita.
+            ${consistencyPrompt}
           `;
 
           const parts: any[] = [{ text: specificPrompt }];
@@ -259,9 +329,6 @@ Descrição visual detalhada (em Português) que servirá de base para as geraç
                           data: parsed.data
                       }
                   });
-              } else {
-                  // Fallback: Continue without image to prevent crash
-                  console.warn("Image validation failed for slot " + slotKey + ". Ignoring reference.");
               }
           }
 
@@ -288,7 +355,7 @@ Descrição visual detalhada (em Português) que servirá de base para as geraç
 
       } catch (e) {
           console.error(e);
-          alert("Erro ao gerar imagem. Se estiver usando uma foto de referência, verifique o formato ou tente outra.");
+          alert("Erro ao gerar imagem. Tente novamente.");
       } finally {
           setIsGeneratingImg(prev => ({ ...prev, [slotKey]: false }));
       }
@@ -308,15 +375,10 @@ Descrição visual detalhada (em Português) que servirá de base para as geraç
   const handleApproveContent = () => {
       if (!response && Object.keys(generatedImages).length === 0) return;
       
-      // CRITICAL FIX: Ensure ID matches Calendar format "YYYY-MM-DD-type"
-      // If targetDate is empty (unlikely with default), fallback to today
       const dateKey = targetDate || new Date().toISOString().split('T')[0];
       const typeKey = targetType;
-      
       const id = `${dateKey}-${typeKey}`;
-
-      // Collect all images
-      const allImages = Object.values(generatedImages);
+      const allImages = Object.values(generatedImages) as string[];
 
       const item: ApprovedContent = {
           id: id,
@@ -339,7 +401,7 @@ Descrição visual detalhada (em Português) que servirá de base para as geraç
   };
 
   // --- COMPONENT: IMAGE SLOT ---
-  const ImageSlot = ({ slotKey, label, context, ratioClass }: { slotKey: string, label: string, context: string, ratioClass: string }) => {
+  const ImageSlot: React.FC<{ slotKey: string, label: string, context: string, ratioClass: string }> = ({ slotKey, label, context, ratioClass }) => {
       const img = generatedImages[slotKey];
       const isBusy = isGeneratingImg[slotKey];
       const localRef = referenceImages[slotKey];
@@ -353,9 +415,9 @@ Descrição visual detalhada (em Português) que servirá de base para as geraç
               {/* Header: Label + Controls */}
               <div className="flex flex-col gap-2">
                   <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-extrabold uppercase text-slate-600 bg-slate-100 px-2 py-1 rounded truncate max-w-[100px]" title={label}>{label}</span>
+                    <span className="text-[10px] font-bold uppercase text-slate-600 bg-slate-100 px-2 py-1 rounded truncate max-w-[100px]" title={label}>{label}</span>
                     <button 
-                        onClick={() => handleGenerateSlotImage(slotKey, context)}
+                        onClick={() => handleGenerateSlotImage(slotKey, context, ratioClass)}
                         disabled={isBusy}
                         className="flex items-center space-x-1 px-3 py-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-md shadow-sm hover:shadow hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold transition-all"
                     >
@@ -366,7 +428,7 @@ Descrição visual detalhada (em Português) que servirá de base para as geraç
                   
                   <div className="flex items-center gap-2">
                       {/* Upload Reference Button - MORE VISIBLE */}
-                      <label className={`flex-1 flex items-center justify-center space-x-1.5 px-2 py-1.5 rounded-md cursor-pointer transition-colors text-[10px] font-bold border ${activeRef ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-white text-slate-600 border-slate-200 hover:bg-blue-50 hover:text-blue-600'}`} title="Carregar uma foto para usar como referência visual (Image-to-Image)">
+                      <label className={`flex-1 flex items-center justify-center space-x-1.5 px-2 py-1.5 rounded-md cursor-pointer transition-colors text-[10px] font-bold border ${activeRef ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-white text-slate-600 border-slate-200 hover:bg-blue-50 hover:text-blue-600'}`} title="Carregar uma foto para usar como referência visual">
                           <Camera size={12} />
                           <span>{localRef ? 'Ref. Local' : (globalReferenceImage ? 'Ref. Global' : '📸 Foto Ref')}</span>
                           <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, slotKey)} />
@@ -376,7 +438,6 @@ Descrição visual detalhada (em Português) que servirá de base para as geraç
                       <button 
                           onClick={() => setEditingSlot(isEditing ? null : slotKey)}
                           className={`flex-1 flex items-center justify-center space-x-1.5 px-2 py-1.5 rounded-md transition-colors text-[10px] font-bold border ${isEditing || customPrompt ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-white text-slate-600 border-slate-200 hover:bg-indigo-50 hover:text-indigo-600'}`}
-                          title="Editar o texto do prompt antes de gerar"
                       >
                           <Edit2 size={12} />
                           <span>{customPrompt ? 'Editado' : 'Ajustar'}</span>
@@ -400,7 +461,7 @@ Descrição visual detalhada (em Português) que servirá de base para as geraç
                   </div>
               )}
 
-              {/* Reference Image Preview (Persistent) */}
+              {/* Reference Image Preview */}
               {activeRef && (
                   <div className="flex items-center p-2 bg-blue-50 rounded-lg border border-blue-100 relative">
                       <div className="h-8 w-8 rounded overflow-hidden border border-blue-200 mr-2 flex-shrink-0">
@@ -408,14 +469,13 @@ Descrição visual detalhada (em Português) que servirá de base para as geraç
                       </div>
                       <div className="flex-1 min-w-0">
                           <p className="text-[9px] font-bold text-blue-700 truncate">
-                              {localRef ? 'Referência Local Ativa' : 'Referência Global Ativa'}
+                              {localRef ? 'Ref Local' : 'Ref Global'}
                           </p>
                       </div>
                       {localRef && (
                           <button 
                             onClick={() => setReferenceImages(prev => { const n = {...prev}; delete n[slotKey]; return n; })} 
-                            className="p-1 bg-white text-red-500 rounded hover:bg-red-50 border border-transparent hover:border-red-100 transition-colors"
-                            title="Remover Referência Local"
+                            className="text-red-500 hover:text-red-700"
                           >
                             <Trash2 size={10}/>
                           </button>
@@ -522,11 +582,11 @@ Descrição visual detalhada (em Português) que servirá de base para as geraç
                         <p className="font-bold mb-1 flex items-center uppercase tracking-wide text-indigo-600"><Info size={10} className="mr-1"/> O Kit Completo gera:</p>
                         <ul className="grid grid-cols-2 gap-x-1 gap-y-1 pl-3 list-disc marker:text-indigo-400 leading-tight">
                             <li>Roteiro de Vídeo</li>
-                            <li>Seq. Stories</li>
+                            <li>Seq. Stories HQ</li>
                             <li>Legenda + Tags</li>
                             <li>Carrossel</li>
                             <li>Script Avatar</li>
-                            <li>NotebookLM</li>
+                            <li>Prompt Solução 🎁</li>
                         </ul>
                     </div>
                 )}
@@ -619,19 +679,42 @@ Descrição visual detalhada (em Português) que servirá de base para as geraç
                  {/* TEXT KIT PARSED SECTIONS */}
                  {genType === 'TEXT' && parseSections(response).map((section, idx) => (
                      <div key={section.id} className="border-b border-slate-100 pb-12">
-                         {/* Text Content */}
-                         <div className="prose prose-indigo max-w-none text-slate-700">
-                             <ReactMarkdown components={{
-                                 h1: ({node, ...props}) => <h2 className="text-xl font-bold text-indigo-700 flex items-center mt-0 mb-4 border-l-4 border-indigo-600 pl-3" {...props} />,
-                                 table: ({node, ...props}) => <div className="overflow-x-auto border rounded-lg bg-slate-50 my-4 shadow-sm"><table className="w-full text-sm" {...props} /></div>,
-                                 th: ({node, ...props}) => <th className="px-4 py-2 bg-slate-100 font-bold text-left text-slate-700" {...props} />,
-                                 td: ({node, ...props}) => <td className="px-4 py-3 border-t border-slate-200" {...props} />,
-                                 li: ({node, ...props}) => <li className="text-slate-900" {...props} />,
-                                 p: ({node, ...props}) => <p className="text-slate-900" {...props} />,
-                             }}>
-                                 {`# ${section.title}\n${section.content}`}
-                             </ReactMarkdown>
-                         </div>
+                         
+                         {/* SPECIAL RENDER FOR THE GOLDEN PROMPT SECTION */}
+                         {section.type === 'PROMPT' ? (
+                            <div className="bg-slate-900 text-green-400 p-6 rounded-xl font-mono shadow-2xl border border-slate-700 relative group overflow-hidden">
+                                <div className="absolute top-0 right-0 p-4 opacity-20"><Terminal size={64}/></div>
+                                <div className="flex items-center space-x-2 mb-4 border-b border-slate-700 pb-2">
+                                    <Sparkles size={16} className="text-yellow-400 animate-pulse"/>
+                                    <h3 className="text-lg font-bold text-white tracking-wider">PROMPT DE OURO (Solução Pronta)</h3>
+                                </div>
+                                <div className="text-sm leading-relaxed whitespace-pre-wrap">
+                                    {section.content}
+                                </div>
+                                <div className="mt-4 flex justify-end">
+                                    <button 
+                                        onClick={() => navigator.clipboard.writeText(section.content)}
+                                        className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded text-xs font-bold flex items-center transition-colors"
+                                    >
+                                        <Copy size={14} className="mr-2"/> Copiar Comando
+                                    </button>
+                                </div>
+                            </div>
+                         ) : (
+                             /* STANDARD TEXT CONTENT */
+                             <div className="prose prose-indigo max-w-none text-slate-700">
+                                 <ReactMarkdown components={{
+                                     h1: ({node, ...props}) => <h2 className="text-xl font-bold text-indigo-700 flex items-center mt-0 mb-4 border-l-4 border-indigo-600 pl-3" {...props} />,
+                                     table: ({node, ...props}) => <div className="overflow-x-auto border rounded-lg bg-slate-50 my-4 shadow-sm"><table className="w-full text-sm" {...props} /></div>,
+                                     th: ({node, ...props}) => <th className="px-4 py-2 bg-slate-100 font-bold text-left text-slate-700" {...props} />,
+                                     td: ({node, ...props}) => <td className="px-4 py-3 border-t border-slate-200" {...props} />,
+                                     li: ({node, ...props}) => <li className="text-slate-900" {...props} />,
+                                     p: ({node, ...props}) => <p className="text-slate-900" {...props} />,
+                                 }}>
+                                     {`# ${section.title}\n${section.content}`}
+                                 </ReactMarkdown>
+                             </div>
+                         )}
 
                          {/* VISUAL GENERATOR BLOCK FOR THIS SECTION */}
                          {['VIDEO', 'STORIES', 'FEED', 'CAROUSEL', 'AVATAR', 'AUDIO'].includes(section.type) && (
@@ -662,7 +745,7 @@ Descrição visual detalhada (em Português) que servirá de base para as geraç
                                                 slotKey={`story_${idx}_${i}`} 
                                                 label={`Story ${i}`} 
                                                 ratioClass="aspect-[9/16]" 
-                                                context={`Story para Instagram slide ${i} (Vertical 9:16), estética clean e profissional: ${section.content.substring(0,100)}`}
+                                                context={extractStoryContent(section.content, i)} 
                                             />
                                         ))}
                                     </div>
@@ -689,7 +772,7 @@ Descrição visual detalhada (em Português) que servirá de base para as geraç
                                                 slotKey={`carousel_${idx}_${i}`} 
                                                 label={`Slide ${i}`} 
                                                 ratioClass="aspect-square" 
-                                                context={`Slide carrossel informativo beleza ${i} (Quadrado): ${section.content.substring(0,100)}`}
+                                                context={extractStoryContent(section.content, i)} // Reuse parser for carousel slides too
                                             />
                                         ))}
                                     </div>

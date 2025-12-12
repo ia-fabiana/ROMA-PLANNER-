@@ -350,20 +350,27 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                   const scheduleIdx = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
                   const schedule = WEEKLY_SCHEDULE[scheduleIdx];
 
-                  const focusColor = schedule.focus.includes('ATRAÇÃO') ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                                     schedule.focus.includes('ENGAJAMENTO') ? 'bg-purple-100 text-purple-700 border-purple-200' :
-                                     'bg-slate-100 text-slate-700 border-slate-200';
+                  // COLOR LOGIC - HEADER BACKGROUND
+                  const headerBgClass = schedule.focus.includes('ATRAÇÃO') ? 'bg-blue-50 text-blue-700 border-b border-blue-100' :
+                                        schedule.focus.includes('ENGAJAMENTO') ? 'bg-purple-50 text-purple-700 border-b border-purple-100' :
+                                        'bg-slate-50 text-slate-700 border-b border-slate-100';
+
+                  // TAG COLOR
+                  const focusColor = schedule.focus.includes('ATRAÇÃO') ? 'bg-blue-100 text-blue-800' :
+                                     schedule.focus.includes('ENGAJAMENTO') ? 'bg-purple-100 text-purple-800' :
+                                     'bg-slate-100 text-slate-700';
 
                   return (
-                      <div key={day} className="bg-white min-h-[160px] p-2 hover:bg-slate-50 transition-colors flex flex-col group relative">
-                          <div className="flex justify-between items-start mb-2">
-                              <span className={`text-sm font-bold ${dayOfWeek === 0 || dayOfWeek === 6 ? 'text-red-500' : 'text-slate-700'}`}>{day}</span>
-                              <span className={`text-[8px] px-1.5 py-0.5 rounded border font-bold uppercase truncate max-w-[80px] ${focusColor}`}>
+                      <div key={day} className="bg-white min-h-[160px] flex flex-col group relative hover:shadow-lg transition-shadow z-0 hover:z-10">
+                          {/* Colored Date Header */}
+                          <div className={`flex justify-between items-center px-2 py-1.5 ${headerBgClass}`}>
+                              <span className={`text-sm font-bold`}>{day}</span>
+                              <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase truncate max-w-[80px] ${focusColor}`}>
                                   {schedule.focus.split(' ')[0]}
                               </span>
                           </div>
                           
-                          <div className="flex-1 space-y-1">
+                          <div className="flex-1 space-y-1 p-2">
                               {renderCellContent(day, 'stories', 'Stories')}
                               {renderCellContent(day, 'post', 'Post')}
                               {renderCellContent(day, 'live', 'Live')}

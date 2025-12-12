@@ -1,4 +1,13 @@
+
 import { StrategyItem } from './types';
+
+// --- SIMULAÇÃO DE BANCO DE DADOS DE ALUNOS ---
+// Em um app real, isso viria de um servidor seguro/API.
+export const STUDENT_DATABASE = [
+  { name: 'Maria Silva', email: 'maria@curso.com', password: '123' },
+  { name: 'João Souza', email: 'joao@roma.com', password: 'roma' },
+  { name: 'Admin Master', email: 'admin', password: 'admin' }
+];
 
 // Parsing the user's raw text into structured data.
 export const STRATEGY_DATA: StrategyItem[] = [
