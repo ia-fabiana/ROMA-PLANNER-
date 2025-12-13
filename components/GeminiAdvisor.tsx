@@ -108,7 +108,7 @@ const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({
           ? calendarContext.selectedFormats.join(', ') 
           : 'Nenhum formato específico selecionado (Gere Kit Padrão)';
       
-      let basePrompt = `Atue como um ROTEIRISTA SÊNIOR e DIRETOR DE ARTE especialista em Marketing para Estética (Método Roma).
+      let basePrompt = `Atue como um ROTEIRISTA SÊNIOR e DIRETOR DE ARTE especialista em Marketing para PROFISSIONAIS DA BELEZA (Nichos: Salão de Beleza, Barbearia, Clínica Estética, Sobrancelhas, Maquiagem, Noivas).
 IDIOMA OBRIGATÓRIO: PORTUGUÊS DO BRASIL (PT-BR).
 
 PERSONA DA EXPERT (QUEM FALA):
@@ -116,6 +116,11 @@ PERSONA DA EXPERT (QUEM FALA):
 - Perfil: Especialista em IA para profissionais da beleza.
 - Tom de voz: Didático, inovador, acolhedor e direto.
 - FORMATO DE VÍDEO: O conteúdo será gravado utilizando um AVATAR DIGITAL (HeyGen) da Fabiana.
+
+DIRETRIZES DE AMBIENTAÇÃO E CENÁRIOS (IMPORTANTE):
+- O público-alvo são donos de negócios da beleza.
+- Nas descrições visuais, VARIE os cenários entre: Salão de Beleza Moderno, Barbearia, Clínica Estética, Estúdio de Maquiagem, Estúdio de Noivas.
+- ELEMENTO OBRIGATÓRIO DE MARCA: Sempre integre elementos visuais de TECNOLOGIA e INTELIGÊNCIA ARTIFICIAL nos cenários (ex: estética clean/tech, tablets futuristas, hologramas sutis, luzes de led, robôs assistentes no fundo). O ambiente deve parecer um "Salão do Futuro" ou "Clínica 4.0".
 
 CONTEXTO DO CLIENTE (ALUNO/SEGMENTO):
 - Foco: ${calendarContext.focus}
@@ -139,16 +144,16 @@ Siga rigorosamente os 8 PASSOS DO SCRIPT DE ALTA CONVERSÃO:
 8. CTA (Salvar)
 
 ESTRUTURA DA TABELA DE ROTEIRO:
-| Passo | Visual / Cena (Instrução HeyGen) | Fala da Fabiana (Script) |
+| Passo | Visual / Cena (Instrução HeyGen com Ambientação Tech/Beleza) | Fala da Fabiana (Script) |
 |---|---|---|
 | 1. HEADLINE | Avatar Fabiana (Close-up) com expressão de alerta | "..." |
 | ... | ... | ... |
 
-*DICA VISUAL:* Alterne entre "Avatar Fabiana Falando" e "B-Roll/Demonstração Visual" (imagens ilustrativas cobrindo a tela enquanto ela narra) para tornar o vídeo dinâmico.
+*DICA VISUAL:* Alterne entre "Avatar Fabiana Falando" e "B-Roll/Demonstração Visual" (imagens de salões futuristas/tech cobrindo a tela enquanto ela narra) para tornar o vídeo dinâmico.
 
 # 📱 2. SEQUÊNCIA DE STORIES (ESTILO HQ REALISTA / STORYBOOK)
 Crie uma narrativa visual sequencial de 5 cenas estilo QUADRINHOS REALISTAS.
-Mantenha a persona da Fabiana ensinando ou demonstrando algo.
+Mantenha a persona da Fabiana ensinando ou demonstrando algo num ambiente de beleza tecnológico.
 Story 1: [Descrição Visual] | 🗣️ Fala: "..." | 💭 Pensamento: "..."
 Story 2: [Descrição Visual] | 🗣️ Fala: "..." | 💭 Pensamento: "..."
 ... (até Story 5)
@@ -164,20 +169,20 @@ ESTRUTURA OBRIGATÓRIA:
 
 # 🎠 4. ESTRUTURA DE CARROSSEL (EDUCAÇÃO)
 5 Slides educativos ensinando o "Jeito Certo".
-Slide 1: Capa (Headline P.E.C)
+Slide 1: Capa (Headline P.E.C - Visual Tech Beauty)
 Slide 2: O Erro Comum
 Slide 3: A Consequência
 Slide 4: O Jeito Certo (A Técnica)
 Slide 5: Resumo/CTA
 
 # 🖼️ 5. PROMPT PARA IMAGEM (CAPA)
-Descrição visual detalhada para capa do Reels ou Post, featuring uma estética tecnológica e clean (estilo IA).
+Descrição visual detalhada para capa do Reels ou Post, featuring uma estética "Beauty Tech" (Beleza + Tecnologia).
 
 # 🤖 6. PROMPT DE OURO (A FERRAMENTA DA SOLUÇÃO)
 Crie um PROMPT DE COMANDO (Prompt de IA) pronto para ser copiado e colado.
 OBJETIVO: Este é o "Jeito Certo" materializado. É o prompt que a Fabiana vai entregar para a aluna usar no ChatGPT/Gemini para resolver a dor abordada no tema.
 ESTRUTURA DO PROMPT A SER GERADO:
-"Aja como um especialista em [Area]. Meu objetivo é [Resultado]. Crie [Formato] seguindo [Critérios]. O contexto é..."
+"Aja como um especialista em [Area da Beleza]. Meu objetivo é [Resultado]. Crie [Formato] seguindo [Critérios]. O contexto é..."
 `;
       setPrompt(basePrompt);
       setGenType('TEXT');
@@ -303,9 +308,13 @@ ESTRUTURA DO PROMPT A SER GERADO:
 
           // Use adjusted prompt if available, otherwise default context
           const specificPrompt = adjustedPrompts[slotKey] || `
-            Gere uma IMAGEM FOTOGRÁFICA REALISTA (Estilo Editorial/Cinematográfico).
+            Gere uma IMAGEM FOTOGRÁFICA REALISTA (Estilo Editorial/Cinematográfico) focada no MERCADO DA BELEZA COM TECNOLOGIA.
             ${formatPrompt}
             CENA PARA RETRATAR: ${context.substring(0, 500)}
+            
+            AMBIENTAÇÃO OBRIGATÓRIA (VARIAR SE NÃO ESPECIFICADO):
+            - Escolha aleatoriamente um destes cenários: Salão de Beleza Moderno, Barbearia Industrial, Clínica Estética Clean, Estúdio de Maquiagem/Sobrancelhas ou Estúdio de Noivas.
+            - INCLUIR ELEMENTOS DE IA/TECH: O ambiente deve demonstrar modernidade e uso de tecnologia (Tablets com gráficos, luzes neon suaves, hologramas sutis de dados, robôs assistentes ao fundo ou estética futurista clean).
             
             DIRETRIZES DE ESTILO:
             - Fotografia de alta resolução (8k), textura de pele natural.
