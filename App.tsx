@@ -3,10 +3,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { AppMode, CalendarContext, ApprovedContent, PlannedContent } from './types';
 import { STRATEGY_DATA, STUDENT_DATABASE } from './constants';
 import OrganizationView from './components/OrganizationView';
+import ChoiceMode from './components/ChoiceMode';
 import GeminiAdvisor from './components/GeminiAdvisor';
 import CalendarView from './components/CalendarView';
 import LoginScreen from './components/LoginScreen';
-import { LayoutDashboard, Layers, CalendarDays, LogOut, User } from 'lucide-react';
+import { LayoutDashboard, Layers, CalendarDays, LogOut, User, Eye } from 'lucide-react';
 
 export default function App() {
   // --- AUTHENTICATION STATE ---
@@ -133,6 +134,10 @@ export default function App() {
             onToggleSelection={toggleSelection} 
           />
         );
+      case AppMode.VISUALIZATION:
+        return (
+          <ChoiceMode data={STRATEGY_DATA} />
+        );
       case AppMode.AI_INSIGHTS:
         return (
           <GeminiAdvisor 
@@ -219,6 +224,17 @@ export default function App() {
                         {selectedIds.length}
                     </span>
                     )}
+                </button>
+                <button
+                    onClick={() => setMode(AppMode.VISUALIZATION)}
+                    className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap ${
+                    mode === AppMode.VISUALIZATION 
+                        ? 'bg-white text-indigo-700 shadow-sm' 
+                        : 'text-slate-500 hover:text-slate-900'
+                    }`}
+                >
+                    <Eye className="mr-2 h-4 w-4" />
+                    Visualizar
                 </button>
                 <button
                     onClick={() => setMode(AppMode.CALENDAR)}

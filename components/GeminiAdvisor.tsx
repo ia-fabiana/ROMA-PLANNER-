@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { StrategyItem, ContentType, HistoryItem, CalendarContext, ApprovedContent } from '../types';
 import { GoogleGenAI } from '@google/genai';
 import ReactMarkdown from 'react-markdown';
-import { Sparkles, Copy, RefreshCw, X, Calendar, CheckCircle2, Image as ImageIcon, Video, Mic, ExternalLink, Wand2, Grid, Clapperboard, MonitorPlay, Layers, Edit2, Download, ChevronRight, Camera, Upload, Trash2, Info, Save, Terminal, FileText } from 'lucide-react';
+import { Sparkles, Copy, RefreshCw, X, Calendar, CheckCircle2, Image as ImageIcon, Video, Mic, ExternalLink, Wand2, Grid, Clapperboard, MonitorPlay, Layers, Edit2, Download, ChevronRight, Camera, Upload, Trash2, Info, Save, Terminal, FileText, Smile, Shirt } from 'lucide-react';
 
 interface GeminiAdvisorProps {
   data: StrategyItem[];
@@ -14,7 +14,7 @@ interface GeminiAdvisorProps {
 }
 
 // Helper to identify section types based on headers
-type SectionType = 'VIDEO' | 'STORIES' | 'FEED' | 'CAROUSEL' | 'AVATAR' | 'AUDIO' | 'IMAGE_PROMPT' | 'PROMPT' | 'OTHER';
+type SectionType = 'VIDEO' | 'STORIES' | 'FEED' | 'CAROUSEL' | 'AVATAR' | 'AUDIO' | 'IMAGE_PROMPT' | 'PROMPT' | 'MEME' | 'OTHER';
 
 interface ParsedSection {
     id: string;
@@ -91,8 +91,12 @@ const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({
   const [generatedImages, setGeneratedImages] = useState<Record<string, string>>({});
   const [isGeneratingImg, setIsGeneratingImg] = useState<Record<string, boolean>>({});
   const [adjustedPrompts, setAdjustedPrompts] = useState<Record<string, string>>({});
+  
+  // REFERENCES
   const [referenceImages, setReferenceImages] = useState<Record<string, string>>({}); // Local per-slot refs
-  const [globalReferenceImage, setGlobalReferenceImage] = useState<string | null>(null); // Global ref
+  const [globalReferenceImage, setGlobalReferenceImage] = useState<string | null>(null); // Global Face/Main ref
+  const [clothingReferenceImage, setClothingReferenceImage] = useState<string | null>(null); // New: Global Clothing Ref
+
   const [editingSlot, setEditingSlot] = useState<string | null>(null); // Which slot is open for adjustment
 
   // Sync state with incoming calendar context
@@ -183,6 +187,15 @@ Crie um PROMPT DE COMANDO (Prompt de IA) pronto para ser copiado e colado.
 OBJETIVO: Este é o "Jeito Certo" materializado. É o prompt que a Fabiana vai entregar para a aluna usar no ChatGPT/Gemini para resolver a dor abordada no tema.
 ESTRUTURA DO PROMPT A SER GERADO:
 "Aja como um especialista em [Area da Beleza]. Meu objetivo é [Resultado]. Crie [Formato] seguindo [Critérios]. O contexto é..."
+
+# 🎭 7. MEME ESTRATÉGICO / VÍDEO VIRAL (HUMOR COM AUTORIDADE)
+Crie um conceito de MEME ou VÍDEO CURTO (Reels/TikTok) que gere identificação imediata, preservando a autoridade da Expert.
+OBJETIVO: Rir da situação difícil (a dor do cliente), não da pessoa. Humor sofisticado ("High-End Humor").
+ESTRUTURA:
+1. **Contexto (POV):** Ex: "Quando a cliente pede desconto..." ou "Aquele momento que a agenda lota...".
+2. **Sugestão Visual para IA de Vídeo (Prompt):** Descreva uma cena curta e engraçada para ser gerada em IAs de vídeo (como Runway/Kling/Hailuo). Ex: "Um robô futurista elegante revirando os olhos sutilmente" ou "Uma gata persa usando bobes no cabelo olhando com julgamento".
+3. **Texto na Tela (Overlay):** A frase curta e impactante.
+4. **Legenda de Conexão:** Como virar esse humor para uma venda/solução na legenda.
 `;
       setPrompt(basePrompt);
       setGenType('TEXT');
@@ -212,6 +225,7 @@ ESTRUTURA DO PROMPT A SER GERADO:
           else if (t.includes('NOTEBOOKLM')) type = 'AUDIO';
           else if (t.includes('PROMPT PARA IMAGEM')) type = 'IMAGE_PROMPT';
           else if (t.includes('PROMPT DE OURO') || t.includes('PROMPT DE COMANDO')) type = 'PROMPT';
+          else if (t.includes('MEME') || t.includes('VIRAL')) type = 'MEME';
 
           return {
               id: `sec_${index}`,
@@ -233,6 +247,17 @@ ESTRUTURA DO PROMPT A SER GERADO:
       }
   };
 
+  const handleClothingUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+              setClothingReferenceImage(reader.result as string);
+          };
+          reader.readAsDataURL(file);
+      }
+  };
+
   const handleGenerateMain = async () => {
     if (!prompt.trim()) return;
     setIsLoading(true);
@@ -247,6 +272,7 @@ ESTRUTURA DO PROMPT A SER GERADO:
           // Manual Single Image Mode
           const parts: any[] = [{ text: prompt }];
 
+          // 1. Add Face Reference
           if (globalReferenceImage) {
               const parsed = parseBase64(globalReferenceImage);
               if (parsed) {
@@ -257,6 +283,37 @@ ESTRUTURA DO PROMPT A SER GERADO:
                     }
                 });
               }
+          }
+          
+          // 2. Add Clothing Reference
+          if (clothingReferenceImage) {
+              const parsedCloth = parseBase64(clothingReferenceImage);
+              if (parsedCloth) {
+                  // If both exist, we need to instruct order. Usually parts order is consistent.
+                  // We add cloth AFTER face in the array.
+                  parts.push({
+                      inlineData: {
+                          mimeType: parsedCloth.mimeType,
+                          data: parsedCloth.data
+                      }
+                  });
+              }
+          }
+
+          // Adjust prompt if references exist
+          let refInstruction = "";
+          if (globalReferenceImage && clothingReferenceImage) {
+              refInstruction = `
+              INSTRUÇÃO DE FUSÃO VISUAL (MUITO IMPORTANTE):
+              Você recebeu DUAS imagens de referência.
+              1. A PRIMEIRA IMAGEM é a REFERÊNCIA DE ROSTO/IDENTIDADE.
+              2. A SEGUNDA IMAGEM é a REFERÊNCIA DE ROUPA/VESTUÁRIO.
+              OBJETIVO: Gere uma imagem onde a personagem tenha O ROSTO da imagem 1 vestindo A ROUPA da imagem 2.
+              Mantenha o cabelo e traços faciais da imagem 1. Adapte a roupa da imagem 2 para o corpo da modelo.
+              `;
+              parts[0].text = refInstruction + parts[0].text;
+          } else if (globalReferenceImage) {
+               parts[0].text = "Use a imagem fornecida como referência principal de identidade visual do personagem. " + parts[0].text;
           }
 
           const result = await ai.models.generateContent({
@@ -301,10 +358,10 @@ ESTRUTURA DO PROMPT A SER GERADO:
           const isStory = ratioClass.includes('9/16');
           const formatPrompt = isStory ? "FORMATO: Vertical (9:16) Storybook." : "FORMATO: Quadrado (1:1) Feed.";
           
-          // Consistency instruction - Now emphasizes Realistic HQ Style
-          const consistencyPrompt = isStory 
-            ? "IMPORTANTE: MANTENHA A CONSISTÊNCIA VISUAL DOS PERSONAGENS (Mesmo rosto, roupas e iluminação da cena anterior). Crie uma narrativa visual contínua." 
-            : "";
+          // Reference Logic Construction
+          let refInstruction = "";
+          const activeFaceRef = referenceImages[slotKey] || globalReferenceImage;
+          const activeClothRef = clothingReferenceImage; // Currently only global cloth ref supported
 
           // Use adjusted prompt if available, otherwise default context
           const specificPrompt = adjustedPrompts[slotKey] || `
@@ -319,26 +376,51 @@ ESTRUTURA DO PROMPT A SER GERADO:
             DIRETRIZES DE ESTILO:
             - Fotografia de alta resolução (8k), textura de pele natural.
             - Iluminação de estúdio suave e profissional.
-            - NÃO inclua texto ou balões na imagem (isso será adicionado na edição).
+            - NÃO inclua texto ou balões na imagem.
             - Foco na expressão facial e linguagem corporal descrita.
-            ${consistencyPrompt}
+            ${isStory ? "IMPORTANTE: MANTENHA A CONSISTÊNCIA VISUAL DOS PERSONAGENS." : ""}
           `;
 
           const parts: any[] = [{ text: specificPrompt }];
           
-          // Add reference image (Local takes priority over Global)
-          const activeRef = referenceImages[slotKey] || globalReferenceImage;
-
-          if (activeRef) {
-              const parsed = parseBase64(activeRef);
+          // 1. Insert Face Ref
+          if (activeFaceRef) {
+              const parsed = parseBase64(activeFaceRef);
               if (parsed) {
-                  parts.unshift({
+                  parts.push({
                       inlineData: {
                           mimeType: parsed.mimeType,
                           data: parsed.data
                       }
                   });
               }
+          }
+
+          // 2. Insert Cloth Ref
+          if (activeClothRef) {
+              const parsedCloth = parseBase64(activeClothRef);
+              if (parsedCloth) {
+                  parts.push({
+                      inlineData: {
+                          mimeType: parsedCloth.mimeType,
+                          data: parsedCloth.data
+                      }
+                  });
+              }
+          }
+
+          // 3. Update Text with Instructions
+          if (activeFaceRef && activeClothRef) {
+              refInstruction = `
+               [INSTRUÇÃO TÉCNICA DE FUSÃO]:
+               As imagens anexadas servem de referência estrita.
+               - A PRIMEIRA IMAGEM fornecida é a REFERÊNCIA DE ROSTO (Identidade/Cabelo).
+               - A SEGUNDA IMAGEM fornecida é a REFERÊNCIA DE ROUPA (Outfit).
+               COMANDO: Gere a pessoa da Imagem 1 vestindo exatamente a roupa da Imagem 2. 
+               `;
+              parts[0].text = refInstruction + parts[0].text;
+          } else if (activeFaceRef) {
+              parts[0].text = "Use a imagem anexa como referência absoluta para a aparência/rosto do personagem. " + parts[0].text;
           }
 
           const result = await ai.models.generateContent({
@@ -595,40 +677,72 @@ ESTRUTURA DO PROMPT A SER GERADO:
                             <li>Legenda + Tags</li>
                             <li>Carrossel</li>
                             <li>Script Avatar</li>
-                            <li>Prompt Solução 🎁</li>
+                            <li>Prompt Solução</li>
+                            <li>Meme Estratégico 🎭</li>
                         </ul>
                     </div>
                 )}
 
-                {/* Global Reference Image Upload */}
-                <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-2">
-                         <span className="text-xs font-bold text-blue-800 uppercase flex items-center">
-                            <Camera size={14} className="mr-1.5"/> Foto de Referência
-                         </span>
-                         {globalReferenceImage && (
-                             <button onClick={() => setGlobalReferenceImage(null)} className="text-[10px] text-red-500 hover:text-red-700 font-bold bg-white px-2 py-0.5 rounded border border-red-100">
-                                 Remover
-                             </button>
-                         )}
-                    </div>
-                    {globalReferenceImage ? (
-                        <div className="h-24 w-full rounded-md overflow-hidden border border-blue-200 bg-white flex items-center justify-center relative group">
-                            <img src={globalReferenceImage} className="w-full h-full object-cover" alt="Ref Global" />
-                            <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors"></div>
-                        </div>
-                    ) : (
-                        <label className="flex flex-col items-center justify-center h-24 border-2 border-dashed border-blue-200 rounded-md bg-white hover:bg-blue-50/50 cursor-pointer transition-colors group">
-                             <Upload size={20} className="text-blue-300 group-hover:text-blue-500 mb-1" />
-                             <span className="text-[10px] font-bold text-blue-400 group-hover:text-blue-600 text-center px-2">
-                                 Clique para carregar<br/>foto do Salão/Ref
+                {/* --- REFERENCE UPLOADS CONTAINER --- */}
+                <div className="space-y-3">
+                    {/* Global Face Reference Upload */}
+                    <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                             <span className="text-xs font-bold text-blue-800 uppercase flex items-center">
+                                <Camera size={14} className="mr-1.5"/> Ref. de Rosto/Pessoa
                              </span>
-                             <input type="file" className="hidden" accept="image/*" onChange={handleGlobalUpload} />
-                        </label>
-                    )}
-                    <p className="text-[9px] text-blue-600/70 mt-1.5 leading-tight">
-                       Esta imagem será usada como base para todas as gerações (Kit ou Imagem Única).
-                    </p>
+                             {globalReferenceImage && (
+                                 <button onClick={() => setGlobalReferenceImage(null)} className="text-[10px] text-red-500 hover:text-red-700 font-bold bg-white px-2 py-0.5 rounded border border-red-100">
+                                     Remover
+                                 </button>
+                             )}
+                        </div>
+                        {globalReferenceImage ? (
+                            <div className="h-24 w-full rounded-md overflow-hidden border border-blue-200 bg-white flex items-center justify-center relative group">
+                                <img src={globalReferenceImage} className="w-full h-full object-cover" alt="Ref Global" />
+                                <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors"></div>
+                            </div>
+                        ) : (
+                            <label className="flex flex-col items-center justify-center h-20 border-2 border-dashed border-blue-200 rounded-md bg-white hover:bg-blue-50/50 cursor-pointer transition-colors group">
+                                 <Upload size={18} className="text-blue-300 group-hover:text-blue-500 mb-1" />
+                                 <span className="text-[10px] font-bold text-blue-400 group-hover:text-blue-600 text-center px-2">
+                                     Carregar Rosto
+                                 </span>
+                                 <input type="file" className="hidden" accept="image/*" onChange={handleGlobalUpload} />
+                            </label>
+                        )}
+                    </div>
+
+                    {/* Clothing Reference Upload */}
+                    <div className="bg-purple-50 border border-purple-100 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                             <span className="text-xs font-bold text-purple-800 uppercase flex items-center">
+                                <Shirt size={14} className="mr-1.5"/> Ref. de Roupa/Look
+                             </span>
+                             {clothingReferenceImage && (
+                                 <button onClick={() => setClothingReferenceImage(null)} className="text-[10px] text-red-500 hover:text-red-700 font-bold bg-white px-2 py-0.5 rounded border border-red-100">
+                                     Remover
+                                 </button>
+                             )}
+                        </div>
+                        {clothingReferenceImage ? (
+                            <div className="h-24 w-full rounded-md overflow-hidden border border-purple-200 bg-white flex items-center justify-center relative group">
+                                <img src={clothingReferenceImage} className="w-full h-full object-contain" alt="Ref Roupa" />
+                                <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors"></div>
+                            </div>
+                        ) : (
+                            <label className="flex flex-col items-center justify-center h-20 border-2 border-dashed border-purple-200 rounded-md bg-white hover:bg-purple-50/50 cursor-pointer transition-colors group">
+                                 <Upload size={18} className="text-purple-300 group-hover:text-purple-500 mb-1" />
+                                 <span className="text-[10px] font-bold text-purple-400 group-hover:text-purple-600 text-center px-2">
+                                     Carregar Roupa
+                                 </span>
+                                 <input type="file" className="hidden" accept="image/*" onChange={handleClothingUpload} />
+                            </label>
+                        )}
+                        <p className="text-[9px] text-purple-600/70 mt-1.5 leading-tight">
+                           A IA vestirá a pessoa da 1ª foto com a roupa desta foto.
+                        </p>
+                    </div>
                 </div>
 
                 {calendarContext && (
@@ -726,7 +840,7 @@ ESTRUTURA DO PROMPT A SER GERADO:
                          )}
 
                          {/* VISUAL GENERATOR BLOCK FOR THIS SECTION */}
-                         {['VIDEO', 'STORIES', 'FEED', 'CAROUSEL', 'AVATAR', 'AUDIO'].includes(section.type) && (
+                         {['VIDEO', 'STORIES', 'FEED', 'CAROUSEL', 'AVATAR', 'AUDIO', 'MEME'].includes(section.type) && (
                             <div className="mt-8 bg-slate-50 border border-slate-200 rounded-xl p-5 shadow-sm">
                                 <div className="flex items-center space-x-2 mb-4 border-b border-slate-200 pb-3">
                                     <div className="p-1.5 bg-indigo-100 rounded text-indigo-600"><ImageIcon size={16}/></div>
@@ -807,6 +921,18 @@ ESTRUTURA DO PROMPT A SER GERADO:
                                             label="Capa Podcast" 
                                             ratioClass="aspect-square" 
                                             context={`Capa de podcast sobre estética e beleza, design minimalista e moderno: ${section.content.substring(0,100)}`}
+                                        />
+                                    </div>
+                                )}
+
+                                {/* MEME SLOT */}
+                                {section.type === 'MEME' && (
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        <ImageSlot 
+                                            slotKey={`meme_${idx}`} 
+                                            label="Cena Meme / Viral" 
+                                            ratioClass="aspect-[9/16]" 
+                                            context={`Cena engraçada e surreal para meme de beleza (Estilo Pixar ou Realista Exagerado): ${section.content.substring(0,150)}`}
                                         />
                                     </div>
                                 )}

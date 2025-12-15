@@ -11,6 +11,7 @@ export interface StrategyItem {
 
 export enum AppMode {
   ORGANIZATION = 'ORGANIZATION',
+  VISUALIZATION = 'VISUALIZATION',
   AI_INSIGHTS = 'AI_INSIGHTS',
   CALENDAR = 'CALENDAR'
 }

@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { 
   ChevronLeft, 
@@ -430,13 +431,20 @@ const CalendarView: React.FC<CalendarViewProps> = ({
 
                       <div className="mb-6">
                           <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">Roteiro / Planejamento Manual</label>
-                          <textarea 
-                              className="w-full h-32 p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 placeholder:text-slate-400"
-                              placeholder="Escreva sua ideia, roteiro ou briefing aqui..."
-                              value={manualText}
-                              onChange={(e) => setManualText(e.target.value)}
-                          />
-                          <p className="text-xs text-slate-400 mt-1">Se preenchido, a IA usará este texto como base principal.</p>
+                          <div className="relative">
+                            <textarea 
+                                className="w-full h-40 p-4 border border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none bg-slate-900 text-white placeholder:text-slate-500 font-mono text-sm leading-relaxed"
+                                placeholder="Escreva sua ideia, roteiro ou briefing aqui..."
+                                value={manualText}
+                                onChange={(e) => setManualText(e.target.value)}
+                            />
+                             <div className="absolute top-2 right-2 text-slate-600 pointer-events-none">
+                                <Edit size={14} />
+                            </div>
+                          </div>
+                          <p className="text-xs text-slate-400 mt-1 flex items-center">
+                              <Sparkles size={10} className="mr-1"/> Se preenchido, a IA usará este texto como base principal.
+                          </p>
                       </div>
 
                       <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-100 mb-6">
