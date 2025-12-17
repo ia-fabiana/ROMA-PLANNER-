@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { StrategyItem, ContentType, HistoryItem, CalendarContext, ApprovedContent } from '../types';
 import { GoogleGenAI } from '@google/genai';
 import ReactMarkdown from 'react-markdown';
-import { Sparkles, Copy, RefreshCw, X, Calendar, CheckCircle2, Image as ImageIcon, Video, Mic, ExternalLink, Wand2, Grid, Clapperboard, MonitorPlay, Layers, Edit2, Download, ChevronRight, Camera, Upload, Trash2, Info, Save, Terminal, FileText, Smile, Shirt } from 'lucide-react';
+import { Sparkles, Copy, RefreshCw, X, Calendar, CheckCircle2, Image as ImageIcon, Video, Mic, ExternalLink, Wand2, Grid, Clapperboard, MonitorPlay, Layers, Edit2, Download, ChevronRight, Camera, Upload, Trash2, Info, Save, Terminal, FileText, Smile, Shirt, ChevronDown, Check } from 'lucide-react';
 
 interface GeminiAdvisorProps {
   data: StrategyItem[];
@@ -66,7 +66,7 @@ const extractStoryContent = (fullText: string, index: number): string => {
     const paragraphs = fullText.split(/\n\n+/).filter(p => p.trim().length > 10);
     if (paragraphs[index-1]) return paragraphs[index-1];
     
-    return fullText.substring(0, 150); // Ultimate fallback
+    return fullText; // Return full text if specific extraction fails, to avoid losing context
 }
 
 const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({ 
@@ -86,6 +86,9 @@ const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({
   const [targetDate, setTargetDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [targetType, setTargetType] = useState<ContentType>('feed');
 
+  // --- ACTIVE FOCUS STATE ---
+  const [activeFocus, setActiveFocus] = useState<string>('');
+
   // --- NEW STATE FOR INTERLEAVED IMAGES ---
   // Key format: "sectionIndex_slotIndex"
   const [generatedImages, setGeneratedImages] = useState<Record<string, string>>({});
@@ -99,12 +102,16 @@ const GeminiAdvisor: React.FC<GeminiAdvisorProps> = ({
 
   const [editingSlot, setEditingSlot] = useState<string | null>(null); // Which slot is open for adjustment
 
+  // UI STATE FOR COPY FEEDBACK
+  const [copiedSectionId, setCopiedSectionId] = useState<string | null>(null);
+
   // Sync state with incoming calendar context
   useEffect(() => {
     if (calendarContext) {
       // 1. Set Target Metadata
       setTargetDate(calendarContext.date);
       setTargetType(calendarContext.contentType);
+      setActiveFocus(calendarContext.focus);
 
       // 2. Build Prompt
       const ingredientsText = calendarContext.strategy;
@@ -137,8 +144,14 @@ IMPORTANTE: Crie um KIT VISUAL seguindo ESTRITAMENTE a estrutura abaixo.
 
 # 🎥 1. ROTEIRO DE VÍDEO (REELS COM AVATAR FABIANA @ia.fabiana)
 Crie um roteiro vertical 9:16 otimizado para o HeyGen.
+
+REGRA DE OURO (3-5 SEGUNDOS INICIAIS): 
+É OBRIGATÓRIO identificar o público na primeira frase.
+Comece a Headline falando: "Você que é profissional da beleza...", "Atenção dona de salão...", "Se você é esteticista...", "Barbeiro, escuta isso...".
+O público deve saber que o vídeo é para ele nos primeiros segundos.
+
 Siga rigorosamente os 8 PASSOS DO SCRIPT DE ALTA CONVERSÃO:
-1. HEADLINE (P.E.C)
+1. HEADLINE (Identificando o Profissional da Beleza + Gancho Forte)
 2. ROMA (Promessa)
 3. CTA (Seguir @ia.fabiana)
 4. JEITO ERRADO (O erro comum)
@@ -150,7 +163,7 @@ Siga rigorosamente os 8 PASSOS DO SCRIPT DE ALTA CONVERSÃO:
 ESTRUTURA DA TABELA DE ROTEIRO:
 | Passo | Visual / Cena (Instrução HeyGen com Ambientação Tech/Beleza) | Fala da Fabiana (Script) |
 |---|---|---|
-| 1. HEADLINE | Avatar Fabiana (Close-up) com expressão de alerta | "..." |
+| 1. HEADLINE | Avatar Fabiana (Close-up) com expressão de alerta | "Profissional da beleza, pare de..." |
 | ... | ... | ... |
 
 *DICA VISUAL:* Alterne entre "Avatar Fabiana Falando" e "B-Roll/Demonstração Visual" (imagens de salões futuristas/tech cobrindo a tela enquanto ela narra) para tornar o vídeo dinâmico.
@@ -165,15 +178,15 @@ Story 2: [Descrição Visual] | 🗣️ Fala: "..." | 💭 Pensamento: "..."
 # 📝 3. LEGENDA PARA FEED (FOCADA NA SOLUÇÃO)
 Escreva uma legenda completa e persuasiva.
 ESTRUTURA OBRIGATÓRIA:
-1. Headline (Gancho P.E.C).
+1. Headline (Gancho Forte).
 2. O Problema (Jeito Errado): Descreva a dor do seguidor.
 3. A Virada (Jeito Certo): Explique a técnica/solução que a Fabiana ensina.
 4. CTA DE ALTO VALOR: Convide o seguidor a comentar uma palavra-chave para receber o "PROMPT DE OURO" (Seção 6 abaixo) no direct.
 5. 15 Hashtags estratégicas.
 
-# 🎠 4. ESTRUTURA DE CARROSSEL (EDUCAÇÃO)
+# 🎠 4. FEED CARROSSEL
 5 Slides educativos ensinando o "Jeito Certo".
-Slide 1: Capa (Headline P.E.C - Visual Tech Beauty)
+Slide 1: Capa (Headline Forte - Visual Tech Beauty)
 Slide 2: O Erro Comum
 Slide 3: A Consequência
 Slide 4: O Jeito Certo (A Técnica)
@@ -188,19 +201,33 @@ OBJETIVO: Este é o "Jeito Certo" materializado. É o prompt que a Fabiana vai e
 ESTRUTURA DO PROMPT A SER GERADO:
 "Aja como um especialista em [Area da Beleza]. Meu objetivo é [Resultado]. Crie [Formato] seguindo [Critérios]. O contexto é..."
 
-# 🎭 7. MEME ESTRATÉGICO / VÍDEO VIRAL (HUMOR COM AUTORIDADE)
-Crie um conceito de MEME ou VÍDEO CURTO (Reels/TikTok) que gere identificação imediata, preservando a autoridade da Expert.
-OBJETIVO: Rir da situação difícil (a dor do cliente), não da pessoa. Humor sofisticado ("High-End Humor").
+# 🎭 7. MEME ESTRATÉGICO / VÍDEO VIRAL (SARCASMO & SÁTIRA)
+Crie um conteúdo com HUMOR ÁCIDO, SARCÁSTICO e IRÔNICO ("Deboche Elegante").
+OBJETIVO: Gerar identificação através da indignação cômica com situações absurdas do dia a dia da beleza.
 ESTRUTURA:
-1. **Contexto (POV):** Ex: "Quando a cliente pede desconto..." ou "Aquele momento que a agenda lota...".
-2. **Sugestão Visual para IA de Vídeo (Prompt):** Descreva uma cena curta e engraçada para ser gerada em IAs de vídeo (como Runway/Kling/Hailuo). Ex: "Um robô futurista elegante revirando os olhos sutilmente" ou "Uma gata persa usando bobes no cabelo olhando com julgamento".
-3. **Texto na Tela (Overlay):** A frase curta e impactante.
-4. **Legenda de Conexão:** Como virar esse humor para uma venda/solução na legenda.
+1. **Cenário (POV):** Situação irritante ou clichê (Ex: cliente pedindo desconto, atrasos, "especialistas" de internet).
+2. **Visual (Prompt de IA):** Expressões exageradas de paciência esgotada, sorriso falso, ou julgamento silencioso.
+3. **Frase/Áudio:** Sátira direta.
+4. **Legenda de Conexão:** Virada para solução (mas mantendo o tom de humor ácido).
 `;
       setPrompt(basePrompt);
       setGenType('TEXT');
     }
   }, [calendarContext]);
+
+  // --- HANDLE FOCUS CHANGE ---
+  const handleFocusChange = (newFocus: string) => {
+      setActiveFocus(newFocus);
+      // Update the prompt text specifically at the Focus line
+      setPrompt(prev => prev.replace(/- Foco: .*/, `- Foco: ${newFocus}`));
+  };
+
+  // --- HANDLE COPY SECTION ---
+  const handleCopySection = (text: string, id: string) => {
+      navigator.clipboard.writeText(text);
+      setCopiedSectionId(id);
+      setTimeout(() => setCopiedSectionId(null), 2000);
+  };
 
   // --- PARSING LOGIC ---
   const parseSections = (text: string): ParsedSection[] => {
@@ -219,8 +246,9 @@ ESTRUTURA:
           
           if (t.includes('ROTEIRO DE VÍDEO') || t.includes('VIDEO')) type = 'VIDEO';
           else if (t.includes('SEQUÊNCIA DE STORIES') || t.includes('STORIES')) type = 'STORIES';
-          else if (t.includes('LEGENDA') || t.includes('FEED')) type = 'FEED';
+          // Check CAROUSEL before FEED, because 'FEED CARROSSEL' contains both keywords
           else if (t.includes('CARROSSEL') || t.includes('CAROUSEL')) type = 'CAROUSEL';
+          else if (t.includes('LEGENDA') || t.includes('FEED')) type = 'FEED';
           else if (t.includes('AVATAR')) type = 'AVATAR';
           else if (t.includes('NOTEBOOKLM')) type = 'AUDIO';
           else if (t.includes('PROMPT PARA IMAGEM')) type = 'IMAGE_PROMPT';
@@ -355,8 +383,12 @@ ESTRUTURA:
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           
           // Determine format details based on ratio
-          const isStory = ratioClass.includes('9/16');
-          const formatPrompt = isStory ? "FORMATO: Vertical (9:16) Storybook." : "FORMATO: Quadrado (1:1) Feed.";
+          let formatPrompt = "FORMATO: Quadrado (1:1) Feed.";
+          if (ratioClass.includes('9/16')) {
+             formatPrompt = "FORMATO: Vertical (9:16) Storybook.";
+          } else if (ratioClass.includes('4/5')) {
+             formatPrompt = "FORMATO: Vertical (4:5) Feed (1080x1350).";
+          }
           
           // Reference Logic Construction
           let refInstruction = "";
@@ -367,7 +399,7 @@ ESTRUTURA:
           const specificPrompt = adjustedPrompts[slotKey] || `
             Gere uma IMAGEM FOTOGRÁFICA REALISTA (Estilo Editorial/Cinematográfico) focada no MERCADO DA BELEZA COM TECNOLOGIA.
             ${formatPrompt}
-            CENA PARA RETRATAR: ${context.substring(0, 500)}
+            CENA PARA RETRATAR: ${context}
             
             AMBIENTAÇÃO OBRIGATÓRIA (VARIAR SE NÃO ESPECIFICADO):
             - Escolha aleatoriamente um destes cenários: Salão de Beleza Moderno, Barbearia Industrial, Clínica Estética Clean, Estúdio de Maquiagem/Sobrancelhas ou Estúdio de Noivas.
@@ -378,7 +410,7 @@ ESTRUTURA:
             - Iluminação de estúdio suave e profissional.
             - NÃO inclua texto ou balões na imagem.
             - Foco na expressão facial e linguagem corporal descrita.
-            ${isStory ? "IMPORTANTE: MANTENHA A CONSISTÊNCIA VISUAL DOS PERSONAGENS." : ""}
+            ${ratioClass.includes('9/16') ? "IMPORTANTE: MANTENHA A CONSISTÊNCIA VISUAL DOS PERSONAGENS." : ""}
           `;
 
           const parts: any[] = [{ text: specificPrompt }];
@@ -544,9 +576,9 @@ ESTRUTURA:
                           <button onClick={() => setEditingSlot(null)} className="text-slate-400 hover:text-slate-600"><X size={12}/></button>
                       </div>
                       <textarea 
-                          className="w-full text-xs p-2 rounded border border-slate-300 focus:outline-none focus:border-indigo-500 text-slate-900 bg-white"
-                          rows={3}
-                          value={adjustedPrompts[slotKey] !== undefined ? adjustedPrompts[slotKey] : context.substring(0, 300)}
+                          className="w-full text-xs p-2 rounded border border-slate-300 focus:outline-none focus:border-indigo-500 text-slate-900 bg-white font-mono leading-relaxed"
+                          rows={10}
+                          value={adjustedPrompts[slotKey] !== undefined ? adjustedPrompts[slotKey] : context}
                           onChange={(e) => setAdjustedPrompts(prev => ({ ...prev, [slotKey]: e.target.value }))}
                       />
                   </div>
@@ -749,8 +781,32 @@ ESTRUTURA:
                     <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-1 opacity-10"><Calendar size={64}/></div>
                         <p className="text-[10px] uppercase font-bold text-indigo-500 mb-1">Contexto Ativo</p>
-                        <div className="mt-2 text-xs text-indigo-700 bg-white/50 p-1.5 rounded">
-                           <span className="font-bold">Foco:</span> {calendarContext.focus}
+                        
+                        {/* CHANGED: EDITABLE FOCUS DROPDOWN */}
+                        <div className="mt-2">
+                            <span className="text-[10px] font-bold uppercase text-indigo-400 mb-1 block">Foco Estratégico</span>
+                            <div className="relative">
+                                <select
+                                    value={activeFocus}
+                                    onChange={(e) => handleFocusChange(e.target.value)}
+                                    className="w-full text-xs font-bold text-indigo-800 bg-white/70 border-b border-indigo-200 focus:outline-none py-1 pr-6 rounded cursor-pointer appearance-none uppercase"
+                                >
+                                    <option value="ATRAÇÃO (DESEJOS)">Atração (Desejos)</option>
+                                    <option value="ATRAÇÃO (OPORTUNIDADES)">Atração (Oportunidades)</option>
+                                    <option value="ENGAJAMENTO (DORES)">Engajamento (Dores)</option>
+                                    <option value="ENGAJAMENTO (OBJEÇÕES)">Engajamento (Objeções)</option>
+                                    <option value="ENGAJAMENTO (SINTOMAS)">Engajamento (Sintomas)</option>
+                                    <option value="AUTORIDADE (TÉCNICA)">Autoridade (Técnica)</option>
+                                    <option value="CONEXÃO (LIFESTYLE)">Conexão (Lifestyle)</option>
+                                    <option value="VENDAS (CTA DIRETO)">Vendas (CTA Direto)</option>
+                                    
+                                    {/* Include original if not in list */}
+                                    {!["ATRAÇÃO (DESEJOS)","ATRAÇÃO (OPORTUNIDADES)","ENGAJAMENTO (DORES)","ENGAJAMENTO (OBJEÇÕES)","ENGAJAMENTO (SINTOMAS)","AUTORIDADE (TÉCNICA)","CONEXÃO (LIFESTYLE)","VENDAS (CTA DIRETO)"].includes(calendarContext.focus) && (
+                                         <option value={calendarContext.focus}>{calendarContext.focus} (Original)</option>
+                                    )}
+                                </select>
+                                <ChevronDown size={12} className="absolute right-1 top-1/2 transform -translate-y-1/2 text-indigo-400 pointer-events-none"/>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -816,31 +872,54 @@ ESTRUTURA:
                                 </div>
                                 <div className="mt-4 flex justify-end">
                                     <button 
-                                        onClick={() => navigator.clipboard.writeText(section.content)}
-                                        className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded text-xs font-bold flex items-center transition-colors"
+                                        onClick={() => handleCopySection(section.content, section.id)}
+                                        className={`px-4 py-2 rounded text-xs font-bold flex items-center transition-colors ${
+                                            copiedSectionId === section.id 
+                                            ? 'bg-green-500 text-white' 
+                                            : 'bg-white/10 hover:bg-white/20 text-white'
+                                        }`}
                                     >
-                                        <Copy size={14} className="mr-2"/> Copiar Comando
+                                        {copiedSectionId === section.id ? <Check size={14} className="mr-2"/> : <Copy size={14} className="mr-2"/>} 
+                                        {copiedSectionId === section.id ? 'Copiado!' : 'Copiar Comando'}
                                     </button>
                                 </div>
                             </div>
                          ) : (
-                             /* STANDARD TEXT CONTENT */
-                             <div className="prose prose-indigo max-w-none text-slate-700">
-                                 <ReactMarkdown components={{
-                                     h1: ({node, ...props}) => <h2 className="text-xl font-bold text-indigo-700 flex items-center mt-0 mb-4 border-l-4 border-indigo-600 pl-3" {...props} />,
-                                     table: ({node, ...props}) => <div className="overflow-x-auto border rounded-lg bg-slate-50 my-4 shadow-sm"><table className="w-full text-sm" {...props} /></div>,
-                                     th: ({node, ...props}) => <th className="px-4 py-2 bg-slate-100 font-bold text-left text-slate-700" {...props} />,
-                                     td: ({node, ...props}) => <td className="px-4 py-3 border-t border-slate-200" {...props} />,
-                                     li: ({node, ...props}) => <li className="text-slate-900" {...props} />,
-                                     p: ({node, ...props}) => <p className="text-slate-900" {...props} />,
-                                 }}>
-                                     {`# ${section.title}\n${section.content}`}
-                                 </ReactMarkdown>
+                             /* STANDARD TEXT CONTENT WITH COPY BUTTON */
+                             <div>
+                                 <div className="flex items-center justify-between mb-4">
+                                     <h2 className="text-xl font-bold text-indigo-700 flex items-center border-l-4 border-indigo-600 pl-3">
+                                         {section.title}
+                                     </h2>
+                                     <button 
+                                        onClick={() => handleCopySection(section.content, section.id)}
+                                        className={`flex items-center space-x-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                                            copiedSectionId === section.id 
+                                            ? 'bg-green-100 text-green-700 border border-green-200' 
+                                            : 'bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 border border-transparent'
+                                        }`}
+                                     >
+                                        {copiedSectionId === section.id ? <Check size={14} /> : <Copy size={14} />}
+                                        <span>{copiedSectionId === section.id ? 'Copiado!' : 'Copiar Texto'}</span>
+                                     </button>
+                                 </div>
+                                 <div className="prose prose-indigo max-w-none text-slate-700">
+                                     <ReactMarkdown components={{
+                                         h1: ({node, ...props}) => <h3 className="text-lg font-bold text-indigo-600 mt-4 mb-2" {...props} />,
+                                         table: ({node, ...props}) => <div className="overflow-x-auto border rounded-lg bg-slate-50 my-4 shadow-sm"><table className="w-full text-sm" {...props} /></div>,
+                                         th: ({node, ...props}) => <th className="px-4 py-2 bg-slate-100 font-bold text-left text-slate-700" {...props} />,
+                                         td: ({node, ...props}) => <td className="px-4 py-3 border-t border-slate-200" {...props} />,
+                                         li: ({node, ...props}) => <li className="text-slate-900" {...props} />,
+                                         p: ({node, ...props}) => <p className="text-slate-900" {...props} />,
+                                     }}>
+                                         {section.content}
+                                     </ReactMarkdown>
+                                 </div>
                              </div>
                          )}
 
                          {/* VISUAL GENERATOR BLOCK FOR THIS SECTION */}
-                         {['VIDEO', 'STORIES', 'FEED', 'CAROUSEL', 'AVATAR', 'AUDIO', 'MEME'].includes(section.type) && (
+                         {['VIDEO', 'STORIES', 'FEED', 'CAROUSEL', 'AVATAR', 'AUDIO', 'MEME', 'IMAGE_PROMPT'].includes(section.type) && (
                             <div className="mt-8 bg-slate-50 border border-slate-200 rounded-xl p-5 shadow-sm">
                                 <div className="flex items-center space-x-2 mb-4 border-b border-slate-200 pb-3">
                                     <div className="p-1.5 bg-indigo-100 rounded text-indigo-600"><ImageIcon size={16}/></div>
@@ -886,7 +965,7 @@ ESTRUTURA:
                                     </div>
                                 )}
 
-                                {/* CAROUSEL (5 SLOTS - 1:1) */}
+                                {/* CAROUSEL (5 SLOTS - 4:5) */}
                                 {section.type === 'CAROUSEL' && (
                                     <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                                         {[1,2,3,4,5].map(i => (
@@ -894,8 +973,8 @@ ESTRUTURA:
                                                 key={i}
                                                 slotKey={`carousel_${idx}_${i}`} 
                                                 label={`Slide ${i}`} 
-                                                ratioClass="aspect-square" 
-                                                context={extractStoryContent(section.content, i)} // Reuse parser for carousel slides too
+                                                ratioClass="aspect-[4/5]" // Changed to 4:5 aspect ratio (1080x1350)
+                                                context={extractStoryContent(section.content, i)} 
                                             />
                                         ))}
                                     </div>
@@ -933,6 +1012,18 @@ ESTRUTURA:
                                             label="Cena Meme / Viral" 
                                             ratioClass="aspect-[9/16]" 
                                             context={`Cena engraçada e surreal para meme de beleza (Estilo Pixar ou Realista Exagerado): ${section.content.substring(0,150)}`}
+                                        />
+                                    </div>
+                                )}
+
+                                {/* IMAGE PROMPT GENERATION (STORY FORMAT) */}
+                                {section.type === 'IMAGE_PROMPT' && (
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        <ImageSlot 
+                                            slotKey={`img_prompt_${idx}`} 
+                                            label="Imagem Sugerida (Story)" 
+                                            ratioClass="aspect-[9/16]" 
+                                            context={`Imagem baseada no prompt sugerido (Formato Story 9:16): ${section.content.substring(0,300)}`}
                                         />
                                     </div>
                                 )}
