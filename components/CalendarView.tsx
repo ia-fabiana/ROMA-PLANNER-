@@ -45,7 +45,7 @@ const WEEKLY_SCHEDULE = [
   { day: 'Quarta', focus: 'ATRAÇÃO (DIVULGAÇÃO)', stories: 'Caixinha de pergunta - Chamada para seguir.', post: 'Post anunciando Live (Antecipação).', live: 'Faça arte comigo' },
   { day: 'Quinta', focus: 'ENGAJAMENTO (TECNICA)', stories: 'Vídeo aprofundado (Seeding) - CTA LISTA.', post: 'Carrossel com conteúdo que resolve dor.', live: null },
   { day: 'Sexta', focus: 'ATRAÇÃO', stories: 'Caixinha de pergunta - Chamada para seguir.', post: 'Meme/Aúdio em alta (Viral).', live: null },
-  { day: 'Sábado', focus: 'ENGAJAMENTO', stories: 'Vídeo aprofundado - CTA LISTA.', post: 'Livros (Indicação/Estudo).', live: null },
+  { day: 'Sábado', focus: 'ENGAJAMENTO + FERRAMENTA IA', stories: 'Demonstração prática de IA + Interação de Engajamento.', post: 'Insight IA (Problema/Solução) & Conteúdo de Engajamento.', live: null },
   { day: 'Domingo', focus: 'MEME / LIFESTYLE', stories: 'INTERAÇÃO / MEME', post: 'FOTOS LIFESTYLE (Conexão).', live: null }
 ];
 
@@ -119,14 +119,11 @@ const CalendarView: React.FC<CalendarViewProps> = ({
       if (!selectedSlot) return;
       const id = `${selectedSlot.date}-${selectedSlot.type}`;
       
-      // Look up schedule focus
-      const dayOfWeek = new Date(selectedSlot.date).getDay(); // 0=Sun, 1=Mon...
-      // Adjust because WEEKLY_SCHEDULE starts at Monday index 0, but Date.getDay() Sunday is 0.
+      const dayOfWeek = new Date(selectedSlot.date).getDay();
       const scheduleIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
       const scheduleItem = WEEKLY_SCHEDULE[scheduleIndex];
       const focus = scheduleItem?.focus || 'Geral';
 
-      // Gather ingredients
       const ingredients = data.filter(i => selectedIds.includes(i.id + '-pain') || selectedIds.includes(i.id + '-desire')).map(i => i.desire || i.pain);
 
       onSavePlan({
@@ -144,13 +141,12 @@ const CalendarView: React.FC<CalendarViewProps> = ({
 
   const handleSendToAI = () => {
       if (!selectedSlot) return;
-      handleSaveDraft(); // Save first
+      handleSaveDraft(); 
       
       const dayOfWeekIdx = new Date(selectedSlot.date).getDay();
       const scheduleIdx = dayOfWeekIdx === 0 ? 6 : dayOfWeekIdx - 1;
       const schedule = WEEKLY_SCHEDULE[scheduleIdx];
 
-      // Build context string from ingredients
       const ingredientsList = data
         .filter(d => selectedIds.some(id => id.startsWith(d.id)))
         .map(d => {
@@ -193,8 +189,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   };
 
   const handleExportExcel = () => {
-      let csvContent = "\uFEFFData;Tipo;Status;Foco;Conteúdo\n"; // BOM for Excel
-      
+      let csvContent = "\uFEFFData;Tipo;Status;Foco;Conteúdo\n"; 
       const allDates = new Set([...Object.keys(approvedItems), ...Object.keys(plannedItems)]);
       
       allDates.forEach(key => {
@@ -223,10 +218,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
       window.print();
   };
 
-  // --- RENDERING HELPERS ---
-
   const renderCellContent = (day: number, type: ContentType, label: string) => {
-      // Filtering Logic
       if (viewFilter === 'STORIES' && type !== 'stories') return null;
       if (viewFilter === 'POST' && type !== 'post' && type !== 'feed') return null;
       if (viewFilter === 'LIVE' && type !== 'live') return null;
@@ -268,8 +260,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           );
       }
 
-      // Empty Slot
-      // If we are filtering by Approved or Draft specifically, we hide empty slots to declutter
       if (viewFilter === 'APPROVED' || viewFilter === 'DRAFT') return null;
 
       return (
@@ -282,8 +272,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({
 
   return (
     <div className="space-y-6 animate-fade-in">
-      
-      {/* HEADER CONTROLS */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2 bg-slate-100 p-1 rounded-lg">
@@ -291,14 +279,9 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                   <span className="px-3 font-bold text-slate-700 capitalize min-w-[140px] text-center">{monthName} {year}</span>
                   <button onClick={handleNextMonth} className="p-1 hover:bg-white rounded shadow-sm transition-all"><ChevronRight size={18}/></button>
               </div>
-              <div className="hidden md:flex items-center space-x-2 text-xs text-slate-500">
-                  <div className="flex items-center"><div className="w-2 h-2 bg-green-500 rounded-full mr-1"></div>Aprovado</div>
-                  <div className="flex items-center"><div className="w-2 h-2 bg-yellow-500 rounded-full mr-1"></div>Planejado</div>
-              </div>
           </div>
 
           <div className="flex items-center gap-3">
-              {/* FILTER DROPDOWN */}
               <div className="relative group">
                   <div className="flex items-center space-x-2 bg-white border border-slate-200 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 cursor-pointer hover:border-indigo-300">
                       <Filter size={16} />
@@ -309,10 +292,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                       <button onClick={() => setViewFilter('ALL')} className={`w-full text-left px-3 py-2 text-xs rounded hover:bg-slate-50 ${viewFilter === 'ALL' ? 'font-bold text-indigo-600' : 'text-slate-600'}`}>Todos</button>
                       <button onClick={() => setViewFilter('APPROVED')} className={`w-full text-left px-3 py-2 text-xs rounded hover:bg-slate-50 ${viewFilter === 'APPROVED' ? 'font-bold text-green-600' : 'text-slate-600'}`}>Apenas Aprovados</button>
                       <button onClick={() => setViewFilter('DRAFT')} className={`w-full text-left px-3 py-2 text-xs rounded hover:bg-slate-50 ${viewFilter === 'DRAFT' ? 'font-bold text-yellow-600' : 'text-slate-600'}`}>Apenas Rascunhos</button>
-                      <div className="h-px bg-slate-100 my-1"></div>
-                      <button onClick={() => setViewFilter('STORIES')} className={`w-full text-left px-3 py-2 text-xs rounded hover:bg-slate-50 ${viewFilter === 'STORIES' ? 'font-bold text-indigo-600' : 'text-slate-600'}`}>Apenas Stories</button>
-                      <button onClick={() => setViewFilter('POST')} className={`w-full text-left px-3 py-2 text-xs rounded hover:bg-slate-50 ${viewFilter === 'POST' ? 'font-bold text-indigo-600' : 'text-slate-600'}`}>Apenas Posts</button>
-                      <button onClick={() => setViewFilter('LIVE')} className={`w-full text-left px-3 py-2 text-xs rounded hover:bg-slate-50 ${viewFilter === 'LIVE' ? 'font-bold text-indigo-600' : 'text-slate-600'}`}>Apenas Lives</button>
                   </div>
               </div>
 
@@ -325,9 +304,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           </div>
       </div>
 
-      {/* CALENDAR GRID */}
       <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-          {/* Weekday Headers */}
           <div className="grid grid-cols-7 border-b border-slate-200 bg-indigo-50">
               {['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'].map((d) => (
                   <div key={d} className="py-3 text-center text-[10px] font-bold text-indigo-900 uppercase tracking-wider">
@@ -337,37 +314,33 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           </div>
 
           <div className="grid grid-cols-7 auto-rows-fr bg-slate-200 gap-px border-b border-slate-200">
-              {/* Empty slots for previous month */}
               {Array.from({ length: firstDayOfMonth }).map((_, i) => (
                   <div key={`empty-${i}`} className="bg-white min-h-[140px] p-2 opacity-50"></div>
               ))}
 
-              {/* Days */}
               {Array.from({ length: daysInMonth }).map((_, i) => {
                   const day = i + 1;
                   const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
-                  const dayOfWeek = date.getDay(); // 0 = Sun
-                  // Map Sunday=0 to Index 6, Mon=1 to Index 0
+                  const dayOfWeek = date.getDay();
                   const scheduleIdx = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
                   const schedule = WEEKLY_SCHEDULE[scheduleIdx];
 
-                  // COLOR LOGIC - HEADER BACKGROUND
                   const headerBgClass = schedule.focus.includes('ATRAÇÃO') ? 'bg-blue-50 text-blue-700 border-b border-blue-100' :
+                                        schedule.focus.includes('ENGAJAMENTO') && schedule.focus.includes('IA') ? 'bg-indigo-50 text-indigo-800 border-b border-indigo-200' :
                                         schedule.focus.includes('ENGAJAMENTO') ? 'bg-purple-50 text-purple-700 border-b border-purple-100' :
                                         'bg-slate-50 text-slate-700 border-b border-slate-100';
 
-                  // TAG COLOR
                   const focusColor = schedule.focus.includes('ATRAÇÃO') ? 'bg-blue-100 text-blue-800' :
+                                     schedule.focus.includes('ENGAJAMENTO') && schedule.focus.includes('IA') ? 'bg-indigo-600 text-white' :
                                      schedule.focus.includes('ENGAJAMENTO') ? 'bg-purple-100 text-purple-800' :
                                      'bg-slate-100 text-slate-700';
 
                   return (
                       <div key={day} className="bg-white min-h-[160px] flex flex-col group relative hover:shadow-lg transition-shadow z-0 hover:z-10">
-                          {/* Colored Date Header */}
                           <div className={`flex justify-between items-center px-2 py-1.5 ${headerBgClass}`}>
                               <span className={`text-sm font-bold`}>{day}</span>
                               <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase truncate max-w-[80px] ${focusColor}`}>
-                                  {schedule.focus.split(' ')[0]}
+                                  {schedule.focus.includes('+') ? 'IA + ENG' : schedule.focus.split(' ')[0]}
                               </span>
                           </div>
                           
@@ -382,7 +355,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           </div>
       </div>
 
-      {/* --- PLANNING MODAL --- */}
       {modalOpen && selectedSlot && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
               <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -404,31 +376,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                           </div>
                       </div>
 
-                      {/* FORMAT SELECTOR */}
-                      <div className="mb-6">
-                          <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-3">Formatos de Conteúdo (Multi-escolha)</label>
-                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                              {CONTENT_FORMATS.map(fmt => {
-                                  const isSelected = selectedFormats.includes(fmt.id);
-                                  return (
-                                      <button 
-                                        key={fmt.id}
-                                        onClick={() => handleFormatToggle(fmt.id)}
-                                        className={`flex items-center space-x-2 px-3 py-2 rounded-lg border text-xs font-bold transition-all ${
-                                            isSelected 
-                                            ? 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-sm' 
-                                            : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'
-                                        }`}
-                                      >
-                                          <div className={isSelected ? 'text-indigo-600' : 'text-slate-400'}>{fmt.icon}</div>
-                                          <span>{fmt.label}</span>
-                                          {isSelected && <CheckCircle2 size={12} className="ml-auto text-indigo-600"/>}
-                                      </button>
-                                  )
-                              })}
-                          </div>
-                      </div>
-
                       <div className="mb-6">
                           <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">Roteiro / Planejamento Manual</label>
                           <div className="relative">
@@ -442,9 +389,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                                 <Edit size={14} />
                             </div>
                           </div>
-                          <p className="text-xs text-slate-400 mt-1 flex items-center">
-                              <Sparkles size={10} className="mr-1"/> Se preenchido, a IA usará este texto como base principal.
-                          </p>
                       </div>
 
                       <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-100 mb-6">
@@ -472,7 +416,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           </div>
       )}
 
-      {/* --- APPROVED CONTENT MODAL --- */}
       {approvedModalOpen && selectedSlot && approvedItems[`${selectedSlot.date}-${selectedSlot.type}`] && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
               <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -482,7 +425,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                          <h3 className="font-bold text-lg">Conteúdo Aprovado</h3>
                       </div>
                       <div className="flex items-center space-x-2">
-                          <button onClick={handleDeleteCurrentApproved} className="p-1.5 bg-green-700 hover:bg-green-800 rounded text-white mr-2" title="Excluir Conteúdo">
+                          <button onClick={handleDeleteCurrentApproved} className="p-1.5 bg-green-700 hover:bg-green-800 rounded text-white mr-2">
                               <Trash2 size={18}/>
                           </button>
                           <button onClick={() => setApprovedModalOpen(false)} className="hover:bg-green-500 p-1 rounded transition-colors"><X size={20}/></button>
@@ -490,52 +433,22 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                   </div>
 
                   <div className="flex-1 overflow-y-auto p-8">
-                        <div className="flex items-center space-x-4 mb-6 text-sm">
-                          <div className="bg-slate-100 px-3 py-1 rounded-full font-bold text-slate-600 flex items-center">
-                              <CalendarIcon size={14} className="mr-2"/> {selectedSlot.date.split('-').reverse().join('/')}
-                          </div>
-                          <div className="bg-slate-100 px-3 py-1 rounded-full font-bold text-green-600 uppercase flex items-center">
-                              <Tag size={14} className="mr-2"/> {selectedSlot.type}
-                          </div>
-                      </div>
-
                       <div className="prose prose-sm max-w-none text-slate-800">
                           <ReactMarkdown>{approvedItems[`${selectedSlot.date}-${selectedSlot.type}`].text}</ReactMarkdown>
                       </div>
 
-                      {/* CAROUSEL / IMAGE GALLERY */}
                       {approvedItems[`${selectedSlot.date}-${selectedSlot.type}`].carouselImages && approvedItems[`${selectedSlot.date}-${selectedSlot.type}`].carouselImages!.length > 0 && (
                           <div className="mt-8 border-t border-slate-200 pt-6">
-                              <h4 className="text-sm font-bold text-slate-900 uppercase mb-4 flex items-center">
-                                  <ImageIcon size={16} className="mr-2 text-indigo-600"/> Galeria Visual Criada
-                              </h4>
                               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                                   {approvedItems[`${selectedSlot.date}-${selectedSlot.type}`].carouselImages!.map((img, idx) => (
-                                      <div key={idx} className="relative group bg-slate-100 rounded-lg overflow-hidden border border-slate-200 aspect-square md:aspect-[9/16]">
+                                      <div key={idx} className="relative group bg-slate-100 rounded-lg overflow-hidden border border-slate-200 aspect-[4/5]">
                                           <img src={img} className="w-full h-full object-cover" alt={`Slide ${idx + 1}`} />
-                                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center">
-                                              <a 
-                                                href={img} 
-                                                download={`roma-visual-${selectedSlot.date}-${idx+1}.png`}
-                                                className="opacity-0 group-hover:opacity-100 p-2 bg-white rounded-full shadow-lg text-slate-800 hover:scale-110 transition-all"
-                                              >
-                                                  <Download size={16} />
-                                              </a>
-                                          </div>
-                                          <span className="absolute bottom-1 right-1 bg-black/50 text-white text-[10px] px-1.5 rounded font-bold">
-                                              {idx + 1}
-                                          </span>
+                                          <a href={img} download className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-2 bg-white rounded-full shadow-lg text-slate-800"><Download size={14} /></a>
                                       </div>
                                   ))}
                               </div>
                           </div>
                       )}
-                  </div>
-
-                  <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
-                      <button onClick={() => setApprovedModalOpen(false)} className="px-6 py-2 bg-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-300 transition-colors">
-                          Fechar
-                      </button>
                   </div>
               </div>
           </div>
