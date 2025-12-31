@@ -99,17 +99,27 @@ PERSONA DA EXPERT (QUEM FALA):
 - Nome: Fabiana (@ia.fabiana).
 - Aparência: Mulher moderna, tech beauty, fotorrealista.
 
-# 🎥 1. ROTEIRO DE VÍDEO (REELS COM AVATAR FABIANA)
-- Forneça um roteiro completo mas também uma descrição visual detalhada para o Estúdio Veo:
-  * VISUAL PARA VEO: [Descrição detalhada da cena de abertura/principal para animação fotorrealista com Fabiana]
+# 🎥 1. ROTEIRO DE VÍDEO (REELS - ESTRUTURA ROMA 8 PASSOS)
+Siga RIGOROSAMENTE esta estrutura estratégica em sua escrita:
+1. HEADLINE (Gancho de impacto imediato)
+2. ROMA (A promessa principal: o que você ajuda a alcançar)
+3. CTA - SEGUIR (Chamada para seguir @ia.fabiana agora)
+4. JEITO ERRADO (O erro comum que as pessoas cometem hoje)
+5. CONSEQUÊNCIA (O impacto negativo de continuar no erro)
+6. JEITO CERTO (A solução nova e correta utilizando IA)
+7. BENEFÍCIO (O resultado positivo e o alívio conquistado)
+8. CTA - SEGUIR (Chamada final para seguir e acompanhar mais dicas)
+
+* VISUAL PARA VEO: [Descrição detalhada da cena de abertura fotorrealista com Fabiana para o Estúdio Veo 3]
+
 # 📱 2. SEQUÊNCIA DE STORIES (5 SLIDES)
 # 📝 3. LEGENDA PARA FEED (COM CTA E IDENTIFICAÇÃO)
 # 🎠 4. FEED CARROSSEL (ESTILO HQ - HISTÓRIA EM QUADRINHOS)
 - Para cada um dos 5 slides, forneça:
-  * VISUAL: [Descrição da cena fotorrealista com Fabiana]
-  * TEXTO NO SLIDE: [Texto principal escrito no slide]
-  * BALÃO DE FALA/PENSAMENTO: [O que a Fabiana está falando ou pensando - estilo HQ]
-# 🎬 5. SEQUÊNCIA DE VÍDEO VEO (DESCREVA 5 CENAS CURTAS PARA O VEO 3, FORMATO 9:16. MANTENHA A CONTINUIDADE DA HISTÓRIA)
+  * VISUAL: [Cena fotorrealista com Fabiana]
+  * TEXTO NO SLIDE: [Texto principal]
+  * BALÃO DE FALA/PENSAMENTO: [Falas estilo HQ]
+# 🎬 5. SEQUÊNCIA DE VÍDEO VEO (DESCREVA 5 CENAS CURTAS PARA O VEO 3, FORMATO 9:16)
 # 🖼️ 6. PROMPT PARA IMAGEM (CAPA)
 # 🎭 7. MEME ESTRATÉGICO
 
@@ -188,27 +198,19 @@ CONTEXTO:
       
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-          const scenePrompt = `FOTORREALISTA, 8K. Fabiana (@ia.fabiana). Movimento fluido e natural baseado na cena: ${adjustedPrompts[slotKey] || context}. FORMATO 9:16.`;
-
+          const scenePrompt = `FOTORREALISTA, 8K. Fabiana (@ia.fabiana). Movimento natural e cinematográfico. CENA: ${adjustedPrompts[slotKey] || context}. FORMATO 9:16.`;
           const imgParsed = parseBase64(imageBase64);
           if (!imgParsed) throw new Error("Imagem de referência inválida.");
 
           let operation = await ai.models.generateVideos({
             model: 'veo-3.1-fast-generate-preview',
             prompt: scenePrompt,
-            image: {
-                imageBytes: imgParsed.data,
-                mimeType: imgParsed.mimeType
-            },
-            config: {
-              numberOfVideos: 1,
-              resolution: '720p',
-              aspectRatio: '9:16'
-            }
+            image: { imageBytes: imgParsed.data, mimeType: imgParsed.mimeType },
+            config: { numberOfVideos: 1, resolution: '720p', aspectRatio: '9:16' }
           });
 
           while (!operation.done) {
-            setVideoStatus(prev => ({ ...prev, [slotKey]: 'Gerando vídeo (Pode levar 1-2 min)...' }));
+            setVideoStatus(prev => ({ ...prev, [slotKey]: 'Veo Studio: Gerando magia (1-2 min)...' }));
             await new Promise(resolve => setTimeout(resolve, 10000));
             // @ts-ignore
             operation = await ai.operations.getVideosOperation({ operation: operation });
@@ -223,7 +225,7 @@ CONTEXTO:
           }
       } catch (e: any) {
           console.error(e);
-          setError("Erro no Veo: " + e.message);
+          setError("Erro no Veo Studio: " + e.message);
       } finally {
           setIsGeneratingVid(prev => ({ ...prev, [slotKey]: false }));
       }
@@ -235,7 +237,7 @@ CONTEXTO:
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
           let formatPrompt = ratioClass.includes('9/16') ? "FORMATO: Vertical (9:16)." : "FORMATO: Feed (4:5).";
           const finalContext = adjustedPrompts[slotKey] || context;
-          const instructions = `FOTORREALISTA. Fabiana (@ia.fabiana) vestindo o look da referência. CENA: ${finalContext}. AMBIENTE: Salão de beleza moderno. ${formatPrompt}`;
+          const instructions = `FOTORREALISTA, 8K. Fabiana (@ia.fabiana). CENA: ${finalContext}. AMBIENTE: Estúdio de beleza ultra-moderno. ${formatPrompt}`;
           
           const parts: any[] = [{ text: instructions }];
           if (avatarReference) {
@@ -271,25 +273,25 @@ CONTEXTO:
     return (
       <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm no-print flex flex-col h-full">
           <div className="flex justify-between items-center mb-2">
-              <span className="text-[10px] font-bold text-slate-500 uppercase">{label}</span>
+              <span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">{label}</span>
               <div className="flex space-x-1">
                 <button onClick={() => setEditingSlot(isEditing ? null : slotKey)} className={`p-1.5 rounded-md ${isEditing ? 'bg-amber-100 text-amber-700' : 'bg-slate-100'}`}><Edit2 size={12}/></button>
-                <button onClick={() => handleGenerateSlotImage(slotKey, context, 'aspect-[9/16]')} className="p-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700" title="Gera imagem de referência"><ImageIcon size={12}/></button>
+                <button onClick={() => handleGenerateSlotImage(slotKey, context, 'aspect-[9/16]')} className="p-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700" title="Criar Visão"><Wand2 size={12}/></button>
                 
                 {imageUrl && (
-                    <a href={imageUrl} download={`roma_ref_${slotKey}.png`} className="p-1.5 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200" title="Download Imagem Ref">
+                    <a href={imageUrl} download={`roma_ref_${slotKey}.png`} className="p-1.5 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200" title="Baixar Imagem">
                         <ImageIcon size={12}/>
                     </a>
                 )}
 
                 {videoUrl && (
-                    <a href={videoUrl} download={`roma_veo_${slotKey}.mp4`} className="p-1.5 bg-green-100 text-green-700 rounded-md hover:bg-green-200" title="Download Vídeo Veo">
+                    <a href={videoUrl} download={`roma_veo_${slotKey}.mp4`} className="p-1.5 bg-green-100 text-green-700 rounded-md hover:bg-green-200" title="Baixar Vídeo">
                         <Video size={12}/>
                     </a>
                 )}
 
                 {imageUrl && !videoUrl && (
-                    <button onClick={() => handleGenerateVeoVideo(slotKey, context, imageUrl)} className="p-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 animate-pulse" title="Transformar em Vídeo Veo">
+                    <button onClick={() => handleGenerateVeoVideo(slotKey, context, imageUrl)} className="p-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 animate-pulse" title="Animar">
                         <MonitorPlay size={12}/></button>
                 )}
               </div>
@@ -301,17 +303,17 @@ CONTEXTO:
                 className="w-full h-20 p-2 text-[10px] border border-amber-200 rounded bg-amber-50 mb-2 font-mono text-black font-bold"
               />
           )}
-          <div className="w-full aspect-[9/16] bg-slate-900 rounded-lg overflow-hidden relative flex items-center justify-center border border-slate-800">
+          <div className="w-full aspect-[9/16] bg-slate-900 rounded-lg overflow-hidden relative flex items-center justify-center border border-slate-800 group/slot">
               {isGeneratingI && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-10 text-center">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-10 text-center p-2">
                       <RefreshCw className="animate-spin text-white mb-2" size={24} />
-                      <span className="text-[8px] font-bold text-white uppercase">Criando Referência...</span>
+                      <span className="text-[8px] font-bold text-white uppercase tracking-widest">Renderizando Visão...</span>
                   </div>
               )}
               {isGeneratingV && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-20 p-4 text-center">
                       <Clapperboard className="animate-pulse text-purple-400 mb-3" size={32} />
-                      <span className="text-[9px] font-bold text-white uppercase tracking-widest">{videoStatus[slotKey]}</span>
+                      <span className="text-[9px] font-bold text-white uppercase tracking-widest leading-tight">{videoStatus[slotKey]}</span>
                   </div>
               )}
               
@@ -319,19 +321,20 @@ CONTEXTO:
                   <video src={videoUrl} controls className="w-full h-full object-cover" loop autoPlay muted />
               ) : imageUrl ? (
                   <div className="relative w-full h-full">
-                    <img src={imageUrl} className="w-full h-full object-cover opacity-80" />
-                    <div className="absolute bottom-0 inset-x-0 p-3 bg-black/60 backdrop-blur-sm">
-                        <p className="text-[10px] text-white font-bold leading-tight uppercase tracking-tighter">Imagem Pronta ✓</p>
-                        <button onClick={() => handleGenerateVeoVideo(slotKey, context, imageUrl)} className="mt-1.5 w-full py-2 bg-purple-600 text-white text-[10px] font-black rounded uppercase flex items-center justify-center">
-                            <Play size={10} className="mr-1" /> Animando com Veo 3
+                    <img src={imageUrl} className="w-full h-full object-cover opacity-90 transition-opacity group-hover/slot:opacity-60" />
+                    <div className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover/slot:opacity-100 transition-opacity">
+                         <button onClick={() => handleGenerateVeoVideo(slotKey, context, imageUrl)} className="px-4 py-2 bg-purple-600 text-white text-[10px] font-black rounded-lg uppercase flex items-center shadow-xl">
+                            <Play size={10} className="mr-1" /> Animando Veo 3
                         </button>
+                    </div>
+                    <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
+                        <p className="text-[8px] text-white/70 font-bold uppercase tracking-tighter">Referência Pronta</p>
                     </div>
                   </div>
               ) : (
-                  <div className="flex flex-col items-center opacity-40 text-white text-center px-4">
-                      <Wand2 size={32} className="mb-2" />
-                      <span className="text-[9px] font-bold uppercase tracking-widest">1. Gerar Imagem</span>
-                      <span className="text-[8px] mt-1 text-slate-400 leading-tight">Gere a base visual para animar</span>
+                  <div className="flex flex-col items-center opacity-30 text-white text-center px-4 group-hover/slot:opacity-60 transition-opacity">
+                      <Sparkles size={32} className="mb-2" />
+                      <span className="text-[9px] font-bold uppercase tracking-widest">Aguardando Prompt</span>
                   </div>
               )}
           </div>
@@ -348,12 +351,12 @@ CONTEXTO:
     return (
       <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm no-print">
           <div className="flex justify-between items-center mb-2">
-              <span className="text-[10px] font-bold text-slate-500 uppercase">{label}</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">{label}</span>
               <div className="flex space-x-1">
                 <button onClick={() => setEditingSlot(isEditing ? null : slotKey)} className={`p-1.5 rounded-md ${isEditing ? 'bg-amber-100 text-amber-700' : 'bg-slate-100'}`}><Edit2 size={12}/></button>
                 <button onClick={() => handleGenerateSlotImage(slotKey, context, ratioClass)} className="p-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"><Wand2 size={12}/></button>
                 {imageUrl && (
-                    <a href={imageUrl} download={`${slotKey}.png`} className="p-1.5 bg-slate-100 text-slate-600 rounded-md hover:bg-slate-200" title="Download Imagem">
+                    <a href={imageUrl} download={`${slotKey}.png`} className="p-1.5 bg-slate-100 text-slate-600 rounded-md hover:bg-slate-200">
                         <Download size={12}/>
                     </a>
                 )}
@@ -387,8 +390,8 @@ CONTEXTO:
   };
 
   return (
-    <div className="bg-white/90 rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col min-h-[800px] backdrop-blur-sm">
-      <div className="bg-slate-50/50 p-6 border-b border-slate-200 print:hidden backdrop-blur-md">
+    <div className="bg-white/95 rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col min-h-[800px] backdrop-blur-md">
+      <div className="bg-slate-50/50 p-6 border-b border-slate-200 print:hidden">
         <div className="flex justify-between items-center mb-6">
             <h2 className="font-bold text-lg text-indigo-700 flex items-center"><Sparkles className="mr-2 text-indigo-500 animate-pulse"/> Roma AI Studio</h2>
             <button onClick={onClearContext} className="text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-200 transition-all"><X size={20}/></button>
@@ -404,7 +407,7 @@ CONTEXTO:
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
             <div className="md:col-span-4 space-y-4">
                 <div className="bg-white p-4 border border-slate-200 rounded-xl shadow-sm">
-                    <span className="text-[10px] font-bold text-slate-400 block mb-2 uppercase tracking-widest">ESTRATÉGIA ATIVA</span>
+                    <span className="text-[10px] font-bold text-slate-400 block mb-1 uppercase tracking-widest">ESTRATÉGIA ATIVA</span>
                     <div className="text-xs font-bold uppercase text-indigo-700 bg-indigo-50 px-3 py-2 rounded-lg flex items-center">
                         <CheckCircle2 size={14} className="mr-2" /> {activeFocus || 'Estratégia Roma'}
                     </div>
@@ -426,7 +429,7 @@ CONTEXTO:
                         </div>
                     </div>
                 </div>
-                <p className="text-[8px] text-slate-400 text-center italic text-black font-bold">Avatar = Rosto | Look = Estilo da Roupa</p>
+                <p className="text-[8px] text-slate-400 text-center italic text-black font-bold uppercase tracking-widest">Referências de IA Ativas ✓</p>
             </div>
             
             <div className="md:col-span-8 flex flex-col">
@@ -436,7 +439,7 @@ CONTEXTO:
                 <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} className="w-full h-40 p-4 border border-slate-200 rounded-2xl font-mono text-xs focus:ring-2 focus:ring-indigo-500 outline-none resize-none leading-relaxed bg-white shadow-inner text-black font-bold" />
                 <button onClick={handleGenerateMain} disabled={isLoading} className="w-full py-4 mt-3 bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-800 text-white font-black rounded-2xl shadow-lg flex items-center justify-center hover:shadow-indigo-500/40 transform active:scale-[0.98] transition-all tracking-widest uppercase text-sm">
                     {isLoading ? <RefreshCw className="animate-spin mr-3" size={20}/> : <Sparkles className="mr-3" size={20}/>} 
-                    {isLoading ? 'ESTRUTURANDO KIT...' : 'GERAR KIT COMPLETO + ESTÚDIO VEO'}
+                    {isLoading ? 'MAPEANDO KIT...' : 'GERAR KIT ESTRATÉGICO + ESTÚDIO VEO'}
                 </button>
             </div>
         </div>
@@ -461,8 +464,8 @@ CONTEXTO:
                                 <h3 className="text-2xl font-black text-slate-800 tracking-tight">{section.title}</h3>
                                 <div className="flex items-center mt-1">
                                     <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded mr-2">{section.type}</span>
-                                    {(section.type === 'VIDEO_SEQUENCE' || section.type === 'VIDEO_REELS') && <span className="text-[10px] font-bold text-purple-600 uppercase tracking-widest bg-purple-50 px-2 py-0.5 rounded flex items-center"><Play size={10} className="mr-1"/> VEO 3 Studio</span>}
-                                    {section.type === 'CAROUSEL' && <span className="text-[10px] font-bold text-amber-600 uppercase tracking-widest bg-amber-50 px-2 py-0.5 rounded flex items-center"><ImageIcon size={10} className="mr-1"/> Estilo HQ</span>}
+                                    {(section.type === 'VIDEO_SEQUENCE' || section.type === 'VIDEO_REELS') && <span className="text-[10px] font-bold text-purple-600 uppercase tracking-widest bg-purple-50 px-2 py-0.5 rounded flex items-center"><Play size={10} className="mr-1"/> Veo 3 Studio Ativo</span>}
+                                    {section.type === 'CAROUSEL' && <span className="text-[10px] font-bold text-amber-600 uppercase tracking-widest bg-amber-50 px-2 py-0.5 rounded flex items-center"><ImageIcon size={10} className="mr-1"/> HQ Vision</span>}
                                 </div>
                             </div>
                         </div>
@@ -483,7 +486,7 @@ CONTEXTO:
                                     <div className="flex items-center space-x-2 px-4 py-1.5 bg-white border border-slate-200 rounded-full text-slate-400">
                                         <Settings2 size={16} className="text-amber-500" />
                                         <span className="text-[10px] font-black uppercase tracking-widest">
-                                            {(section.type === 'VIDEO_SEQUENCE' || section.type === 'VIDEO_REELS') ? 'Workflow Veo 3: Imagem > Vídeo' : section.type === 'CAROUSEL' ? 'HQ Carousel Vision' : 'Imagen-4 Vision Studio'}
+                                            {(section.type === 'VIDEO_SEQUENCE' || section.type === 'VIDEO_REELS') ? 'VEO 3 WORKFLOW: IMAGEM > ANIMAÇÃO' : section.type === 'CAROUSEL' ? 'ESTILO HQ VISION' : 'IMAGEN-4 VISION STUDIO'}
                                         </span>
                                     </div>
                                     <div className="h-px bg-slate-200 flex-1"></div>
@@ -496,10 +499,10 @@ CONTEXTO:
                                         ))
                                     ) : section.type === 'VIDEO_REELS' ? (
                                         <div className="col-span-2 sm:col-span-3 md:col-span-2 mx-auto w-full">
-                                            <VideoSlot slotKey={`${section.type}_${idx}_1`} label="Destaque Reels" context={extractStoryContent(section.content, 1)} />
+                                            <VideoSlot slotKey={`${section.type}_${idx}_1`} label="Destaque Reels / Veo 3" context={extractStoryContent(section.content, 1)} />
                                         </div>
                                     ) : section.type === 'IMAGE_PROMPT' ? (
-                                        <ImageSlot slotKey={`${section.type}_idx_1`} label="Destaque" ratioClass="aspect-[9/16]" context={section.content.substring(0, 800)} />
+                                        <ImageSlot slotKey={`${section.type}_idx_1`} label="Capa Viral" ratioClass="aspect-[9/16]" context={section.content.substring(0, 800)} />
                                     ) : (
                                         [1,2,3,4,5].map(i => (
                                             <ImageSlot key={i} slotKey={`${section.type}_${idx}_${i}`} label={`Slide 0${i}`} ratioClass={section.type === 'CAROUSEL' ? 'aspect-[4/5]' : 'aspect-[9/16]'} context={extractStoryContent(section.content, i)} />
